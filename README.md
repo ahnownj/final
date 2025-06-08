@@ -1,5 +1,44 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
 
+## Google Maps 통합
+
+이 프로젝트는 Google Maps API가 통합되어 있습니다.
+
+### 환경 설정
+
+1. `.env.local` 파일을 프로젝트 루트에 생성하세요:
+```bash
+# Google Maps API Key
+NEXT_PUBLIC_GOOGLE_KEY=your_google_maps_api_key_here
+```
+
+2. Google Cloud Console에서 API 키를 발급받아 위 파일에 설정하세요.
+
+### 사용 가능한 페이지
+
+- `/map` - 기본 Google Maps 페이지
+- `/advanced-map` - 고급 기능이 포함된 인터랙티브 지도 페이지
+
+### 주요 구성 요소
+
+1. **GoogleMap 컴포넌트** (`components/GoogleMap.js`)
+   - 재사용 가능한 Google Maps React 컴포넌트
+   - 마커, 줌, 중심점 등 커스터마이징 가능
+   - 로딩 상태 및 에러 처리 포함
+
+2. **useGoogleMaps 훅** (`components/hooks/useGoogleMaps.js`)
+   - Google Maps 기능을 쉽게 사용할 수 있는 커스텀 훅
+   - 마커 추가/제거, 지도 이동, 정보창 등의 기능 제공
+
+### 기능
+
+- 지도 표시 및 확대/축소
+- 마커 추가 및 제거
+- 정보창 (InfoWindow) 표시
+- 지도 위치 이동 (panTo)
+- 서울 주요 관광지 빠른 이동
+- 사용자 정의 마커 추가
+
 ## Getting Started
 
 First, run the development server:
