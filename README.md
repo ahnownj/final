@@ -16,8 +16,10 @@ NEXT_PUBLIC_GOOGLE_KEY=your_google_maps_api_key_here
 
 ### 사용 가능한 페이지
 
-- `/map` - 기본 Google Maps 페이지
-- `/advanced-map` - 고급 기능이 포함된 인터랙티브 지도 페이지
+- `/` - 메인 페이지 (인덱스)
+- `/map` - 위성지도 + 스트리트뷰 결합 페이지 (주석 처리됨)
+- `/map2` - 위성지도 + 스트리트뷰 결합 페이지 (새로 구현)
+- `/about` - 정보 페이지
 
 ### 주요 구성 요소
 
