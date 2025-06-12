@@ -6,9 +6,18 @@ export default function Map2Page() {
   const mapRef = useRef(null);
   const streetViewRef = useRef(null);
   const containerRef = useRef(null);
-  const [clickedLocation, setClickedLocation] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [panorama, setPanorama] = useState(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [isFlashlight, setIsFlashlight] = useState(true);
+  const [showStreetInfo, setShowStreetInfo] = useState(false);
+  const [currentPlace, setCurrentPlace] = useState(null);
+
+  // 랜덤 center 생성 함수 (한국 범위)
+  const getRandomLatLng = () => ({
+    lat: 33.0 + Math.random() * (38.5 - 33.0),
+    lng: 124.5 + Math.random() * (131.9 - 124.5)
+  });
+  const [center, setCenter] = useState(getRandomLatLng());
 
   const toggleFullscreen = async () => {
     if (!document.fullscreenElement) {
@@ -21,66 +30,40 @@ export default function Map2Page() {
   };
 
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
-
-  useEffect(() => {
     const initMap = async () => {
-      const loader = new Loader({
+      const google = await new Loader({
         apiKey: process.env.NEXT_PUBLIC_GOOGLE_KEY,
         version: 'weekly'
-      });
+      }).load();
       
-      const google = await loader.load();
-      
-      // 위성지도 생성
+      // 위성지도
       const map = new google.maps.Map(mapRef.current, {
-        center: { lat: 37.5665, lng: 126.9780 },
-        zoom: 10,
+        center: center,
+        zoom: 14,
+        minZoom: 7,
         mapTypeId: 'satellite',
         disableDefaultUI: true,
-        fullscreenControl: false
+        restriction: {
+          latLngBounds: { north: 85, south: -85, west: -180, east: 180 },
+          strictBounds: true
+        }
       });
 
-      // Street View 파노라마 생성 (완전히 깨끗한 UI)
-      const streetViewPanorama = new google.maps.StreetViewPanorama(
-        streetViewRef.current,
-        {
-          visible: false,
-          disableDefaultUI: true, // 모든 기본 UI 숨김
-          addressControl: false,
-          linksControl: false,
-          panControl: false,
-          enableCloseButton: false,
-          fullscreenControl: false,
-          zoomControl: false,
-          motionTracking: false,
-          motionTrackingControl: false,
-          imageDateControl: false,
-          clickToGo: false,
-          scrollwheel: false,
-          keyboardShortcuts: false,
-          showRoadLabels: false,
-          disableDoubleClickZoom: true
-        }
-      );
+      // 스트리트뷰
+      const streetView = new google.maps.StreetViewPanorama(streetViewRef.current, {
+        visible: false,
+        disableDefaultUI: true
+      });
 
-      setPanorama(streetViewPanorama);
-
-      // places 마커 생성
+      // 마커 생성 및 클릭 이벤트
       places.forEach(place => {
         const marker = new google.maps.Marker({
           position: { lat: place.lat, lng: place.lng },
           map,
-          title: place.title,
+          title: place.place || place.user,
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
-            scale: 5,
+            scale: 4,
             fillColor: 'yellow',
             fillOpacity: 1,
             strokeColor: 'yellow',
@@ -88,43 +71,77 @@ export default function Map2Page() {
           }
         });
         
-        // 마커 클릭 시 Street View 직접 로드
         marker.addListener('click', () => {
-          const randomHeading = Math.random() * 360;
-          
-          streetViewPanorama.setOptions({
+          streetView.setOptions({
             position: { lat: place.lat, lng: place.lng },
-            pov: { 
-              heading: randomHeading, 
-              pitch: 0 
-            },
+            pov: { heading: Math.random() * 360, pitch: 0 },
             visible: true
           });
-          
-          setClickedLocation(`${place.title} - 위도: ${place.lat.toFixed(4)}, 경도: ${place.lng.toFixed(4)}`);
+          setCurrentPlace(place);
+          setShowStreetInfo(false); // 정보 오버레이 숨김
         });
+      });
+
+      // 전체화면 변경 이벤트
+      document.addEventListener('fullscreenchange', () => {
+        setIsFullscreen(!!document.fullscreenElement);
       });
     };
     
     initMap();
+  }, [center]);
+
+  // 마우스 위치 추적
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!mapRef.current) return;
+      const rect = mapRef.current.getBoundingClientRect();
+      setMousePos({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      });
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
+
+  // 더블클릭 시 손전등 효과 토글
+  const handleDoubleClick = () => setIsFlashlight(v => !v);
 
   return (
     <>
       <div ref={containerRef} className="container">
         <div className="streetview-section">
-          {clickedLocation && (
-            <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-              <div ref={streetViewRef} style={{ width: '100%', height: '100%' }}></div>
+          <div
+            ref={streetViewRef}
+            style={{ width: '100%', height: '100%', backgroundColor: '#000' }}
+            onDoubleClick={() => setShowStreetInfo(v => !v)}
+          ></div>
+          {showStreetInfo && currentPlace && (
+            <div className="streetview-info-overlay">
+              <div>{currentPlace.place || ''}</div>
+              <div>{currentPlace.country || ''}</div>
+              <div>{currentPlace.user || ''}</div>
+              <div>{currentPlace.date || ''}</div>
             </div>
           )}
         </div>
         
-        <div className="map-section">
+        <div className="map-section" onDoubleClick={handleDoubleClick}>
           <button className="fullscreen-btn" onClick={toggleFullscreen}>
             {isFullscreen ? '⤡' : '⤢'}
           </button>
           <div ref={mapRef} style={{ width: '100%', height: '100%' }}></div>
+          {/* 손전등 오버레이 */}
+          {isFlashlight && (
+            <div
+              className="flashlight-overlay"
+              style={{
+                maskImage: `radial-gradient(circle 100px at ${mousePos.x}px ${mousePos.y}px, transparent 0%, transparent 100px, black 100px)`,
+                WebkitMaskImage: `radial-gradient(circle 100px at ${mousePos.x}px ${mousePos.y}px, transparent 0%, transparent 100px, black 100px)`
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -133,7 +150,7 @@ export default function Map2Page() {
           display: flex;
           width: 100vw;
           height: 100vh;
-          position: relative;
+
         }
         
         .fullscreen-btn {
@@ -176,31 +193,46 @@ export default function Map2Page() {
             height: 50vh;
           }
         }
+        .flashlight-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: black;
+          pointer-events: none;
+          z-index: 100;
+        }
+        .streetview-info-overlay {
+          position: absolute;
+          left: 50%;
+          top: 47%;
+          transform: translateX(-50%);
+          z-index: 2001;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          font-size: 9pt;
+          color: black;
+          font-family: 'Neue Haas Grotesk', 'Arial', sans-serif;
+          font-weight: 400;
+          text-align: center;
+          background: #ffeb3b;
+          border-radius: 0px;
+          padding: 1px 3px;
+        }
+        .streetview-info-overlay div {
+          margin: 0px;
+        }
       `}</style>
 
       <style jsx global>{`
-        /* Google 로고 및 키보드 단축키 텍스트 숨기기 */
-        .gm-style-cc {
-          display: none !important;
-        }
-        
-        .gmnoprint {
-          display: none !important;
-        }
-        
-        .gm-style .gm-style-cc {
-          display: none !important;
-        }
-        
-        .gm-style a[href*="google.com/maps"] {
-          display: none !important;
-        }
-        
-        .gm-style div[style*="font-family"] {
+        .gm-style-cc, .gmnoprint, .gm-style a[href*="google.com/maps"], .gm-style div[style*="font-family"] {
           display: none !important;
         }
       `}</style>
     </>
   );
 }
+    
     
