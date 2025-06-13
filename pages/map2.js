@@ -31,10 +31,42 @@ export default function Map2Page() {
 
   useEffect(() => {
     const initMap = async () => {
-      const google = await new Loader({
-        apiKey: process.env.NEXT_PUBLIC_GOOGLE_KEY,
-        version: 'weekly'
-      }).load();
+      // 디버깅: API 키 확인
+      console.log('Google API Key:', process.env.NEXT_PUBLIC_GOOGLE_KEY ? 'EXISTS' : 'MISSING');
+      console.log('API Key Length:', process.env.NEXT_PUBLIC_GOOGLE_KEY?.length || 0);
+      console.log('API Key Preview:', process.env.NEXT_PUBLIC_GOOGLE_KEY?.substring(0, 10) + '...' || 'UNDEFINED');
+      console.log('All ENV vars:', Object.keys(process.env).filter(key => key.startsWith('NEXT_PUBLIC')));
+      console.log('Center coordinates:', center);
+      
+      // API 키 검증
+      if (!process.env.NEXT_PUBLIC_GOOGLE_KEY) {
+        console.error('Google Maps API key is missing');
+        return;
+      }
+      
+      try {
+        const google = await new Loader({
+          apiKey: process.env.NEXT_PUBLIC_GOOGLE_KEY,
+          version: 'weekly',
+          libraries: ['places'] // 필요한 라이브러리 명시
+        }).load();
+        
+        console.log('Google Maps API loaded successfully');
+      } catch (error) {
+        console.error('Failed to load Google Maps API:', error);
+        // 에러 시 사용자에게 알림
+        if (mapRef.current) {
+          mapRef.current.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%; background: #f0f0f0; color: #666; font-family: Arial;">
+              <div style="text-align: center;">
+                <h3>지도를 불러올 수 없습니다</h3>
+                <p>Google Maps API 설정을 확인해주세요</p>
+              </div>
+            </div>
+          `;
+        }
+        return;
+      }
       
       // 위성지도
       const map = new google.maps.Map(mapRef.current, {
@@ -48,17 +80,47 @@ export default function Map2Page() {
           strictBounds: true
         }
       });
-
+      
       // 스트리트뷰
       const streetView = new google.maps.StreetViewPanorama(streetViewRef.current, {
         visible: false,
         disableDefaultUI: true
       });
-
+      
+      // 유효한 좌표를 가진 places만 필터링
+      const validPlaces = places.filter(place => 
+        place && 
+        place.lat !== undefined && 
+        place.lng !== undefined && 
+        !isNaN(parseFloat(place.lat)) && 
+        !isNaN(parseFloat(place.lng))
+      );
+      
+      console.log('Total places:', places.length);
+      console.log('Valid places:', validPlaces.length);
+      
       // 마커 생성 및 클릭 이벤트
-      places.forEach(place => {
+      validPlaces.forEach((place, index) => {
+        // 디버깅: 각 place의 좌표 확인
+        console.log(`Place ${index}:`, {
+          lat: place.lat,
+          lng: place.lng,
+          latType: typeof place.lat,
+          lngType: typeof place.lng
+        });
+        
+        // 좌표값 검증 및 변환
+        const lat = typeof place.lat === 'number' ? place.lat : parseFloat(place.lat);
+        const lng = typeof place.lng === 'number' ? place.lng : parseFloat(place.lng);
+        
+        // 유효한 좌표인지 확인
+        if (isNaN(lat) || isNaN(lng)) {
+          console.error(`Invalid coordinates for place ${index}:`, { lat: place.lat, lng: place.lng });
+          return; // 이 마커는 건너뛰기
+        }
+        
         const marker = new google.maps.Marker({
-          position: { lat: place.lat, lng: place.lng },
+          position: { lat: lat, lng: lng },
           map,
           title: place.place || place.user,
           icon: {
@@ -73,7 +135,7 @@ export default function Map2Page() {
         
         marker.addListener('click', () => {
           streetView.setOptions({
-            position: { lat: place.lat, lng: place.lng },
+            position: { lat: lat, lng: lng },
             pov: { heading: Math.random() * 360, pitch: 0 },
             visible: true
           });
