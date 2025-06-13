@@ -40,7 +40,7 @@ export default function Map2Page() {
       const map = new google.maps.Map(mapRef.current, {
         center: center,
         zoom: 14,
-        minZoom: 7,
+        minZoom: 6,
         mapTypeId: 'satellite',
         disableDefaultUI: true,
         restriction: {
