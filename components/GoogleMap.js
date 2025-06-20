@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
+import { useGoogleMaps } from './hooks/useGoogleMaps';
 
 const GoogleMap = ({ 
   center = { lat: 37.5665, lng: 126.9780 }, // 서울 기본 좌표
@@ -12,66 +12,48 @@ const GoogleMap = ({
   const mapRef = useRef(null);
   const [map, setMap] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  
+  // 공통 Google Maps 훅 사용
+  const { google, isLoaded, error } = useGoogleMaps();
 
   useEffect(() => {
-    const initMap = async () => {
-      try {
-        const apiKey = process.env.NEXT_PUBLIC_GOOGLE_KEY;
-        console.log('API Key exists:', !!apiKey);
-        console.log('API Key length:', apiKey?.length || 0);
-
-        if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
-          throw new Error('Google Maps API 키가 설정되지 않았거나 기본값입니다.');
-        }
-
-        const loader = new Loader({
-          apiKey: apiKey,
-          version: 'weekly',
-          libraries: ['places']
-        });
-
-        console.log('Google Maps 로딩 시작...');
-        const google = await loader.load();
-        console.log('Google Maps 로딩 완료!');
-        
-        if (mapRef.current) {
-          const mapInstance = new google.maps.Map(mapRef.current, {
-            center: center,
-            zoom: zoom,
-            mapTypeControl: true,
-            streetViewControl: true,
-            fullscreenControl: true,
-          });
-
-          setMap(mapInstance);
-
-          // 마커 추가
-          markers.forEach(marker => {
-            new google.maps.Marker({
-              position: marker.position,
-              map: mapInstance,
-              title: marker.title || '',
-              ...(marker.options || {})
-            });
-          });
-
-          // 지도 로드 완료 콜백
-          if (onMapLoad) {
-            onMapLoad(mapInstance, google);
-          }
-
-          setIsLoading(false);
-        }
-      } catch (err) {
-        console.error('Google Maps 로드 오류:', err);
-        setError(err.message);
+    if (!isLoaded || !google || error) {
+      if (error) {
+        console.error('Google Maps 로드 오류:', error);
         setIsLoading(false);
       }
-    };
+      return;
+    }
 
-    initMap();
-  }, [center.lat, center.lng, zoom, markers.length]);
+    if (mapRef.current) {
+      const mapInstance = new google.maps.Map(mapRef.current, {
+        center: center,
+        zoom: zoom,
+        mapTypeControl: true,
+        streetViewControl: true,
+        fullscreenControl: true,
+      });
+
+      setMap(mapInstance);
+
+      // 마커 추가
+      markers.forEach(marker => {
+        new google.maps.Marker({
+          position: marker.position,
+          map: mapInstance,
+          title: marker.title || '',
+          ...(marker.options || {})
+        });
+      });
+
+      // 지도 로드 완료 콜백
+      if (onMapLoad) {
+        onMapLoad(mapInstance, google);
+      }
+
+      setIsLoading(false);
+    }
+  }, [center.lat, center.lng, zoom, markers.length, isLoaded, google, error]);
 
   if (error) {
     return (

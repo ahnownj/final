@@ -1,82 +1,72 @@
-import { useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Loader } from '@googlemaps/js-api-loader';
+
+// 전역 Google Maps 인스턴스 캐시
+let globalGoogleMaps = null;
+let loaderPromise = null;
+
+// 일관된 Google Maps 설정
+const GOOGLE_MAPS_CONFIG = {
+  apiKey: process.env.NEXT_PUBLIC_GOOGLE_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+  version: 'weekly',
+  libraries: ['places'] // 모든 페이지에서 동일한 라이브러리 사용
+};
 
 export const useGoogleMaps = () => {
-  const [map, setMap] = useState(null);
-  const [google, setGoogle] = useState(null);
-  const [markers, setMarkers] = useState([]);
+  const [isLoaded, setIsLoaded] = useState(!!globalGoogleMaps);
+  const [error, setError] = useState(null);
+  const googleRef = useRef(globalGoogleMaps);
 
-  const addMarker = useCallback((position, title, options = {}) => {
-    if (!map || !google) return null;
+  useEffect(() => {
+    const initGoogleMaps = async () => {
+      // 이미 로드된 경우 바로 반환
+      if (globalGoogleMaps) {
+        googleRef.current = globalGoogleMaps;
+        setIsLoaded(true);
+        return;
+      }
 
-    const marker = new google.maps.Marker({
-      position,
-      map,
-      title,
-      ...options
-    });
+      // 이미 로딩 중인 경우 기다림
+      if (loaderPromise) {
+        try {
+          const google = await loaderPromise;
+          globalGoogleMaps = google;
+          googleRef.current = google;
+          setIsLoaded(true);
+        } catch (err) {
+          setError(err.message);
+        }
+        return;
+      }
 
-    setMarkers(prev => [...prev, marker]);
-    return marker;
-  }, [map, google]);
+      try {
+        if (!GOOGLE_MAPS_CONFIG.apiKey || GOOGLE_MAPS_CONFIG.apiKey === 'YOUR_API_KEY_HERE') {
+          throw new Error('Google Maps API 키가 설정되지 않았습니다.');
+        }
 
-  const removeMarker = useCallback((markerToRemove) => {
-    markerToRemove.setMap(null);
-    setMarkers(prev => prev.filter(marker => marker !== markerToRemove));
-  }, []);
+        // 새로운 로더 생성 및 로딩 시작
+        const loader = new Loader(GOOGLE_MAPS_CONFIG);
+        loaderPromise = loader.load();
+        
+        const google = await loaderPromise;
+        globalGoogleMaps = google;
+        googleRef.current = google;
+        setIsLoaded(true);
+      } catch (err) {
+        console.error('Failed to load Google Maps API:', err);
+        setError(err.message);
+        loaderPromise = null; // 실패 시 재시도 가능하도록 초기화
+      }
+    };
 
-  const clearMarkers = useCallback(() => {
-    markers.forEach(marker => marker.setMap(null));
-    setMarkers([]);
-  }, [markers]);
-
-  const panTo = useCallback((position) => {
-    if (map) {
-      map.panTo(position);
-    }
-  }, [map]);
-
-  const setZoom = useCallback((zoom) => {
-    if (map) {
-      map.setZoom(zoom);
-    }
-  }, [map]);
-
-  const fitBounds = useCallback((bounds) => {
-    if (map) {
-      map.fitBounds(bounds);
-    }
-  }, [map]);
-
-  const addInfoWindow = useCallback((marker, content) => {
-    if (!google) return null;
-
-    const infoWindow = new google.maps.InfoWindow({
-      content
-    });
-
-    marker.addListener('click', () => {
-      infoWindow.open(map, marker);
-    });
-
-    return infoWindow;
-  }, [map, google]);
-
-  const initializeMap = useCallback((mapInstance, googleInstance) => {
-    setMap(mapInstance);
-    setGoogle(googleInstance);
+    initGoogleMaps();
   }, []);
 
   return {
-    map,
-    google,
-    markers,
-    addMarker,
-    removeMarker,
-    clearMarkers,
-    panTo,
-    setZoom,
-    fitBounds,
-    addInfoWindow,
-    initializeMap
+    google: googleRef.current,
+    isLoaded,
+    error
   };
-}; 
+};
+
+export default useGoogleMaps; 

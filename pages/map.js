@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { Loader } from '@googlemaps/js-api-loader';
 import places from '../data/places';
+import { useGoogleMaps } from '../components/hooks/useGoogleMaps';
 
 export default function Map2Page() {
   const router = useRouter();
@@ -12,6 +12,9 @@ export default function Map2Page() {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isFlashlight, setIsFlashlight] = useState(true);
   const [currentPlace, setCurrentPlace] = useState(null);
+  
+  // 공통 Google Maps 훅 사용
+  const { google, isLoaded, error } = useGoogleMaps();
 
   // URL 파라미터에서 좌표를 가져오거나 서울 중심 좌표 사용
   const getInitialCenter = () => {
@@ -43,29 +46,14 @@ export default function Map2Page() {
   };
 
   useEffect(() => {
-    // router.query가 준비될 때까지 기다림
-    if (!router.isReady) return;
+    // router.query와 Google Maps가 준비될 때까지 기다림
+    if (!router.isReady || !isLoaded || !google) return;
     
-    const initMap = async () => {
+    const initMap = () => {
       const center = getInitialCenter();
       
-      // API 키 검증
-      if (!process.env.NEXT_PUBLIC_GOOGLE_KEY) {
-        console.error('Google Maps API key is missing');
-        return;
-      }
-      
-      try {
-        const google = await new Loader({
-          apiKey: process.env.NEXT_PUBLIC_GOOGLE_KEY,
-          version: 'weekly',
-          libraries: ['places'] // 필요한 라이브러리 명시
-        }).load();
-        
-
-      } catch (error) {
-        console.error('Failed to load Google Maps API:', error);
-        // 에러 시 사용자에게 알림
+      if (error) {
+        console.error('Google Maps API error:', error);
         if (mapRef.current) {
           mapRef.current.innerHTML = `
             <div style="display: flex; align-items: center; justify-content: center; height: 100%; background: #f0f0f0; color: #666; font-family: Arial;">
@@ -155,7 +143,7 @@ export default function Map2Page() {
     };
     
     initMap();
-  }, [router.isReady, router.query]);
+  }, [router.isReady, router.query, isLoaded, google, error]);
 
   // 마우스 위치 추적
   useEffect(() => {

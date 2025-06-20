@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
-import { Loader } from '@googlemaps/js-api-loader';
 import { places } from '../data/places';
+import { useGoogleMaps } from '../components/hooks/useGoogleMaps';
 
 const THUMBNAIL_WIDTH = 210, THUMBNAIL_HEIGHT = 100;
 
@@ -12,12 +12,13 @@ export default function Main() {
   const [sortDir, setSortDir] = useState('asc');
   const [hoveredItem, setHoveredItem] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
-  const googleRef = useRef(null);
   const streetViewInstanceRef = useRef(null);
   const mainStreetViewInstanceRef = useRef(null);
-  const [isLoaded, setIsLoaded] = useState(false);
   const [currentEmoji, setCurrentEmoji] = useState('');
   const [showAbout, setShowAbout] = useState(false);
+  
+  // 공통 Google Maps 훅 사용
+  const { google, isLoaded, error } = useGoogleMaps();
 
   useEffect(() => {
     const emojis = ['🌍', '🌎', '🌏'];
@@ -50,29 +51,15 @@ export default function Main() {
     setData(formatted);
   }, []);
 
-  useEffect(() => {
-    const initGoogleMaps = async () => {
-      try {
-        const google = await new Loader({
-          apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
-          version: 'weekly'
-        }).load();
-        googleRef.current = google;
-        setIsLoaded(true);
-      } catch (error) {
-        console.error('Failed to load Google Maps API:', error);
-      }
-    };
-    initGoogleMaps();
-  }, []);
+
 
   const createStreetView = (container) => {
-    if (!googleRef.current || !container) return null;
+    if (!google || !container) return null;
     
     // 컨테이너를 먼저 숨김
     container.style.opacity = '0';
     
-    const streetView = new googleRef.current.maps.StreetViewPanorama(container, {
+    const streetView = new google.maps.StreetViewPanorama(container, {
       visible: false,
       disableDefaultUI: true,
       addressControl: false,
