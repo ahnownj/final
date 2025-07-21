@@ -12,6 +12,32 @@ export default function Map2Page() {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isFlashlight, setIsFlashlight] = useState(true);
   const [currentPlace, setCurrentPlace] = useState(null);
+  const [currentEmoji, setCurrentEmoji] = useState('');
+
+  // 회전하는 지구본 이모지
+  useEffect(() => {
+    const emojis = ['🌍', '🌎', '🌏'];
+    let currentIndex = 0;
+    
+    setCurrentEmoji(emojis[currentIndex]);
+    
+    const interval = setInterval(() => {
+      currentIndex = (currentIndex + 1) % 3;
+      setCurrentEmoji(emojis[currentIndex]);
+    }, 2000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  // 지구본 클릭 핸들러
+  const handleGlobeClick = () => {
+    if (router.pathname === '/') {
+      router.push('/map');
+    } else if (router.pathname === '/map') {
+      router.push('/');
+    }
+  };
+
 
   // URL 파라미터에서 좌표를 가져오거나 서울 중심 좌표 사용
   const getInitialCenter = () => {
@@ -50,17 +76,23 @@ export default function Map2Page() {
       const center = getInitialCenter();
       
       // API 키 검증
-      if (!process.env.NEXT_PUBLIC_GOOGLE_KEY) {
+      if (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
         console.error('Google Maps API key is missing');
         return;
       }
       
       try {
-        const google = await new Loader({
-          apiKey: process.env.NEXT_PUBLIC_GOOGLE_KEY,
-          version: 'weekly',
-          libraries: ['places'] // 필요한 라이브러리 명시
-        }).load();
+        // Google Maps API 중복 로딩 방지
+        let google;
+        if (window.google && window.google.maps) {
+          google = window.google;
+        } else {
+          google = await new Loader({
+            apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+            version: 'weekly',
+            libraries: ['places'] // 필요한 라이브러리 명시
+          }).load();
+        }
         
 
       } catch (error) {
@@ -177,6 +209,11 @@ export default function Map2Page() {
   return (
     <>
       <div ref={containerRef} className="container">
+        {/* 지구본 (전체화면 모드에서도 보이도록) */}
+        <div className="site-title" onClick={handleGlobeClick}>
+          {currentEmoji}
+        </div>
+        
         <div className="streetview-section">
           <div
             ref={streetViewRef}
@@ -212,7 +249,17 @@ export default function Map2Page() {
           display: flex;
           width: 100vw;
           height: 100vh;
-
+          position: relative;
+        }
+        
+        .site-title {
+          position: absolute;
+          top: 10px;
+          left: 50%;
+          transform: translateX(-50%);
+          font-size: 28px;
+          z-index: 1001;
+          cursor: pointer;
         }
         
         .fullscreen-btn {

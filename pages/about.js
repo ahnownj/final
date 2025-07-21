@@ -36,7 +36,7 @@ export default function About() {
           </p>
 
           <p>
-          This website has been created from the 2025 Convergence Design III led by Jeanyoon Choi at Korea National University of Arts.
+          This website has been created by Eunjae Ahn from 2025 Convergence Design III led by Jeanyoon Choi at Korea National University of Arts.
           </p>
 
         </div>
