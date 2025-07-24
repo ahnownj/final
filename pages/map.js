@@ -75,8 +75,8 @@ export default function Map2Page() {
     const initMap = async () => {
       const center = getInitialCenter();
       
-      // API 키 검증
-      if (!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
+            // API 키 검증
+      if (!process.env.NEXT_PUBLIC_GOOGLE_KEY) {
         console.error('Google Maps API key is missing');
         return;
       }
@@ -88,7 +88,7 @@ export default function Map2Page() {
           google = window.google;
         } else {
           google = await new Loader({
-            apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+            apiKey: process.env.NEXT_PUBLIC_GOOGLE_KEY,
             version: 'weekly',
             libraries: ['places'] // 필요한 라이브러리 명시
           }).load();

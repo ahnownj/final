@@ -38,7 +38,7 @@ export default function Home() {
     const initGoogleMaps = async () => {
       try {
         const google = await new Loader({
-          apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+          apiKey: process.env.NEXT_PUBLIC_GOOGLE_KEY,
           version: 'weekly'
         }).load();
         googleRef.current = google;
@@ -584,7 +584,7 @@ export default function Home() {
           color: #f0f0f0;
         }
       `}</style>
-    </div>
+          </div>
   );
 }
 
