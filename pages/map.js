@@ -10,7 +10,8 @@ export default function Map2Page() {
   const containerRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const [isFlashlight, setIsFlashlight] = useState(true);
+  const [isFlashlightStreet, setIsFlashlightStreet] = useState(true);
+  const [isFlashlightMap] = useState(true); // 지도는 항상 켜짐
   const [currentPlace, setCurrentPlace] = useState(null);
   const [currentEmoji, setCurrentEmoji] = useState('');
 
@@ -116,7 +117,7 @@ export default function Map2Page() {
       const map = new google.maps.Map(mapRef.current, {
         center: center,
         zoom: initialZoom,
-        minZoom: 10,
+        minZoom: 8,
         mapTypeId: 'satellite',
         disableDefaultUI: true,
         restriction: {
@@ -194,25 +195,45 @@ export default function Map2Page() {
       });
     };
     
-    initMap();
+        initMap();
   }, [router.isReady, router.query]);
 
-  // 마우스 위치 추적
+
+
+  // 마우스 위치 추적 - 전체 컨테이너 기준
   useEffect(() => {
     const handleMouseMove = (e) => {
-      if (!mapRef.current) return;
-      const rect = mapRef.current.getBoundingClientRect();
-      setMousePos({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
-      });
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setMousePos({
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top
+        });
+      }
     };
     window.addEventListener('mousemove', handleMouseMove);
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // 더블클릭 시 손전등 효과 토글
-  const handleDoubleClick = () => setIsFlashlight(v => !v);
+  // 각 섹션별 상대 좌표 계산
+  const getStreetViewPos = () => {
+    const isMobile = window.innerWidth <= 768;
+    return {
+      x: mousePos.x,
+      y: isMobile ? mousePos.y : mousePos.y
+    };
+  };
+
+  const getMapPos = () => {
+    const isMobile = window.innerWidth <= 768;
+    return {
+      x: isMobile ? mousePos.x : mousePos.x - (containerRef.current?.clientWidth || 0) / 2,
+      y: isMobile ? mousePos.y - (containerRef.current?.clientHeight || 0) / 2 : mousePos.y
+    };
+  };
+
+  // 더블클릭 시 스트리트뷰 손전등만 토글 (지도 영역에서만)
+  const handleDoubleClickMap = () => setIsFlashlightStreet(v => !v);
 
   return (
     <>
@@ -232,20 +253,30 @@ export default function Map2Page() {
               }
             }}
           ></div>
+          {/* 손전등 오버레이 - 스트리트뷰 */}
+          {isFlashlightStreet && (
+            <div
+              className="flashlight-overlay"
+              style={{
+                maskImage: `radial-gradient(circle var(--flashlight-size) at ${getStreetViewPos().x}px ${getStreetViewPos().y}px, transparent 0%, transparent var(--flashlight-size), black var(--flashlight-size))`,
+                WebkitMaskImage: `radial-gradient(circle var(--flashlight-size) at ${getStreetViewPos().x}px ${getStreetViewPos().y}px, transparent 0%, transparent var(--flashlight-size), black var(--flashlight-size))`
+              }}
+            />
+          )}
         </div>
         
-        <div className="map-section" onDoubleClick={handleDoubleClick}>
+        <div className="map-section" onDoubleClick={handleDoubleClickMap}>
           <button className="fullscreen-btn" onClick={toggleFullscreen}>
             {isFullscreen ? '⤡' : '⤢'}
           </button>
           <div ref={mapRef} style={{ width: '100%', height: '100%' }}></div>
-          {/* 손전등 오버레이 */}
-          {isFlashlight && (
+          {/* 손전등 오버레이 - 지도 */}
+          {isFlashlightMap && (
             <div
               className="flashlight-overlay"
               style={{
-                maskImage: `radial-gradient(circle 100px at ${mousePos.x}px ${mousePos.y}px, transparent 0%, transparent 100px, black 100px)`,
-                WebkitMaskImage: `radial-gradient(circle 100px at ${mousePos.x}px ${mousePos.y}px, transparent 0%, transparent 100px, black 100px)`
+                maskImage: `radial-gradient(circle var(--flashlight-size) at ${getMapPos().x}px ${getMapPos().y}px, transparent 0%, transparent var(--flashlight-size), black var(--flashlight-size))`,
+                WebkitMaskImage: `radial-gradient(circle var(--flashlight-size) at ${getMapPos().x}px ${getMapPos().y}px, transparent 0%, transparent var(--flashlight-size), black var(--flashlight-size))`
               }}
             />
           )}
@@ -258,6 +289,7 @@ export default function Map2Page() {
           width: 100vw;
           height: 100vh;
           position: relative;
+          --flashlight-size: 120px;
         }
         
         .site-title {
@@ -303,11 +335,19 @@ export default function Map2Page() {
         @media (max-width: 768px) {
           .container {
             flex-direction: column;
+            --flashlight-size: 90px;
           }
           .streetview-section,
           .map-section {
             width: 100vw;
             height: 50vh;
+          }
+        }
+        
+        /* 모바일/터치 디바이스에서만 전체화면 버튼 숨김 */
+        @media (pointer: coarse) {
+          .fullscreen-btn {
+            display: none;
           }
         }
         .flashlight-overlay {
