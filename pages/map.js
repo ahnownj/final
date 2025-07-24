@@ -131,6 +131,13 @@ export default function Map2Page() {
         disableDefaultUI: true
       });
       
+      // Street View 데이터가 없으면 자동으로 숨기기
+      streetView.addListener('status_changed', () => {
+        if (streetView.getStatus() !== 'OK') {
+          streetView.setVisible(false);
+        }
+      });
+      
       // 유효한 좌표를 가진 places만 필터링
       const validPlaces = places.filter(place => 
         place && 
@@ -171,12 +178,13 @@ export default function Map2Page() {
         });
         
         marker.addListener('click', () => {
+          setCurrentPlace({ ...place, lat, lng });
+          
           streetView.setOptions({
             position: { lat: lat, lng: lng },
             pov: { heading: Math.random() * 360, pitch: 0 },
             visible: true
           });
-          setCurrentPlace({ ...place, lat, lng });
         });
       });
 
