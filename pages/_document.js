@@ -31,6 +31,7 @@ export default class MyDocument extends Document {
     return (
       <Html>
         <Head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
           <link rel="icon" href="/Artboard 1.svg" type="image/svg+xml" />
         </Head>
         <body>

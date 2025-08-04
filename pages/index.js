@@ -30,7 +30,8 @@ export default function Home() {
         place: p.place || '',
         date: p.date || '',
         url: p.url || ''
-      }));
+      }))
+      .sort(() => Math.random() - 0.5); // 랜덤 정렬
     setData(formatted);
   }, []);
 
@@ -323,7 +324,7 @@ export default function Home() {
                 <div className="main-streetview-container">
                   <div 
                     className={`main-streetview main-streetview-${item.id}`}
-                    onDoubleClick={() => {
+                    onClick={() => {
                       router.push(`/map?lat=${item.lat}&lng=${item.lng}`);
                     }}
                   ></div>
