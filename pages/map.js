@@ -60,6 +60,8 @@ export default function Map2Page() {
   };
 
   const toggleFullscreen = async () => {
+    if (typeof document === 'undefined') return;
+    
     if (!document.fullscreenElement) {
       await containerRef.current.requestFullscreen();
       setIsFullscreen(true);
@@ -85,7 +87,7 @@ export default function Map2Page() {
       try {
         // Google Maps API 중복 로딩 방지
         let google;
-        if (window.google && window.google.maps) {
+        if (typeof window !== 'undefined' && window.google && window.google.maps) {
           google = window.google;
         } else {
           google = await new Loader({
@@ -190,9 +192,11 @@ export default function Map2Page() {
       });
 
       // 전체화면 변경 이벤트
-      document.addEventListener('fullscreenchange', () => {
-        setIsFullscreen(!!document.fullscreenElement);
-      });
+      if (typeof document !== 'undefined') {
+        document.addEventListener('fullscreenchange', () => {
+          setIsFullscreen(!!document.fullscreenElement);
+        });
+      }
     };
     
         initMap();
@@ -202,6 +206,8 @@ export default function Map2Page() {
 
   // 마우스 위치 추적 - 전체 컨테이너 기준
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     const handleMouseMove = (e) => {
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
@@ -217,7 +223,7 @@ export default function Map2Page() {
 
   // 각 섹션별 상대 좌표 계산
   const getStreetViewPos = () => {
-    const isMobile = window.innerWidth <= 768;
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
     return {
       x: mousePos.x,
       y: isMobile ? mousePos.y : mousePos.y
@@ -225,7 +231,7 @@ export default function Map2Page() {
   };
 
   const getMapPos = () => {
-    const isMobile = window.innerWidth <= 768;
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
     return {
       x: isMobile ? mousePos.x : mousePos.x - (containerRef.current?.clientWidth || 0) / 2,
       y: isMobile ? mousePos.y - (containerRef.current?.clientHeight || 0) / 2 : mousePos.y
@@ -248,7 +254,7 @@ export default function Map2Page() {
             ref={streetViewRef}
             style={{ width: '100%', height: '100%', backgroundColor: '#000' }}
             onDoubleClick={() => {
-              if (currentPlace && currentPlace.url) {
+              if (currentPlace && currentPlace.url && typeof window !== 'undefined') {
                 window.open(currentPlace.url, '_blank');
               }
             }}
