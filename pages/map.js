@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { Loader } from '@googlemaps/js-api-loader';
 import places from '../data/places';
 
-export default function Map2Page() {
+function Map2Page() {
   const router = useRouter();
   const mapRef = useRef(null);
   const streetViewRef = useRef(null);
@@ -377,5 +377,13 @@ export default function Map2Page() {
     </>
   );
 }
-    
+
+// 서버 사이드 렌더링으로 설정하여 정적 생성 오류 방지
+export async function getServerSideProps() {
+  return {
+    props: {}, // 빈 props 반환
+  };
+}
+
+export default Map2Page;
     
