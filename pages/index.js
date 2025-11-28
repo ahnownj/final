@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
-import { Loader } from '@googlemaps/js-api-loader';
 import { places } from '../data/places';
 import Image from 'next/image';
+import { loadGoogleMaps } from '../lib/googleMaps';
+import { getSavedNote, NOTE_EVENT_NAME } from '../components/note';
 
 const THUMBNAIL_WIDTH = 210, THUMBNAIL_HEIGHT = 100;
 
@@ -12,7 +13,8 @@ export default function Home() {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
   const [hoveredItem, setHoveredItem] = useState(null);
-  const [selectedItems, setSelectedItems] = useState([]);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [selectedNote, setSelectedNote] = useState(null);
   const googleRef = useRef(null);
   const streetViewInstanceRef = useRef(null);
   const mainStreetViewInstanceRef = useRef(null);
@@ -30,18 +32,14 @@ export default function Home() {
         place: p.place || '',
         date: p.date || '',
         url: p.url || ''
-      }))
-      .sort(() => Math.random() - 0.5); // 랜덤 정렬
+      }));
     setData(formatted);
   }, []);
 
   useEffect(() => {
     const initGoogleMaps = async () => {
       try {
-        const google = await new Loader({
-          apiKey: process.env.NEXT_PUBLIC_GOOGLE_KEY,
-          version: 'weekly'
-        }).load();
+        const google = await loadGoogleMaps();
         googleRef.current = google;
         setIsLoaded(true);
       } catch (error) {
@@ -50,6 +48,26 @@ export default function Home() {
     };
     initGoogleMaps();
   }, []);
+
+  useEffect(() => {
+    if (!selectedItem) {
+      setSelectedNote(null);
+      return;
+    }
+    setSelectedNote(getSavedNote(selectedItem.id));
+  }, [selectedItem]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleNoteUpdate = (event) => {
+      if (!selectedItem) return;
+      if (event.detail?.placeId === selectedItem.id) {
+        setSelectedNote(event.detail.data);
+      }
+    };
+    window.addEventListener(NOTE_EVENT_NAME, handleNoteUpdate);
+    return () => window.removeEventListener(NOTE_EVENT_NAME, handleNoteUpdate);
+  }, [selectedItem]);
 
   const createStreetView = (container) => {
     if (!googleRef.current || !container) return null;
@@ -145,7 +163,11 @@ export default function Home() {
     setSortDir(dir);
     
     // 정렬 시 모든 미리보기창 닫기
-    setSelectedItems([]);
+    setSelectedItem(null);
+    setSelectedNote(null);
+    if (mainStreetViewInstanceRef.current) {
+      mainStreetViewInstanceRef.current.setVisible(false);
+    }
     
     setData([...data].sort((a, b) => {
       if (key === 'date') {
@@ -212,126 +234,153 @@ export default function Home() {
   };
 
   const handleRowClick = (item) => {
-    const isAlreadySelected = selectedItems.some(selectedItem => selectedItem.id === item.id);
-    
-    if (isAlreadySelected) {
-      // 이미 선택된 아이템이면 배열에서 제거
-      setSelectedItems(selectedItems.filter(selectedItem => selectedItem.id !== item.id));
+    if (selectedItem?.id === item.id) {
+      setSelectedItem(null);
+      setSelectedNote(null);
+      if (mainStreetViewInstanceRef.current) {
+        mainStreetViewInstanceRef.current.setVisible(false);
+      }
       return;
     }
-    
-    // 선택되지 않은 아이템이면 배열에 추가
-    setSelectedItems([...selectedItems, item]);
-    
-    setTimeout(() => {
-      const mainContainer = document.querySelector(`.main-streetview-${item.id}`);
-      if (mainContainer) {
-        const existingContainer = mainContainer.querySelector('.streetview-container');
-        if (existingContainer) existingContainer.remove();
-        
-        const newContainer = document.createElement('div');
-        newContainer.className = 'streetview-container';
-        newContainer.style.cssText = 'width: 100%; height: 100%;';
-        mainContainer.appendChild(newContainer);
-        
-        mainStreetViewInstanceRef.current = createStreetView(newContainer);
-        
-        if (mainStreetViewInstanceRef.current) {
-          mainStreetViewInstanceRef.current.setOptions({
-            position: { lat: parseFloat(item.lat), lng: parseFloat(item.lng) },
-            pov: { heading: -90, pitch: 15, zoom: 10 }, // 메인
-            visible: true
-          });
-        }
-      }
-    }, 100);
+    setSelectedItem(item);
   };
 
+  const handleOpenMap = (item) => {
+    router.push(`/map?lat=${item.lat}&lng=${item.lng}`);
+  };
+
+  useEffect(() => {
+    if (!selectedItem || !isLoaded) return;
+
+    const timer = setTimeout(() => {
+      const mainContainer = document.querySelector(`.main-streetview-${selectedItem.id}`);
+      if (!mainContainer) return;
+
+      const existingContainer = mainContainer.querySelector('.streetview-container');
+      if (existingContainer) existingContainer.remove();
+
+      const newContainer = document.createElement('div');
+      newContainer.className = 'streetview-container';
+      newContainer.style.cssText = 'width: 100%; height: 100%;';
+      mainContainer.appendChild(newContainer);
+
+      mainStreetViewInstanceRef.current = createStreetView(newContainer);
+
+      if (mainStreetViewInstanceRef.current) {
+        mainStreetViewInstanceRef.current.setOptions({
+          position: { lat: parseFloat(selectedItem.lat), lng: parseFloat(selectedItem.lng) },
+          pov: { heading: -90, pitch: 15, zoom: 10 },
+          visible: true
+        });
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [selectedItem, isLoaded]);
+
   // 썸네일 표시 조건 수정: ID로 비교
-  const shouldShowThumbnail = hoveredItem && (!selectedItems.some(item => item.id === hoveredItem.id));
+  const shouldShowThumbnail = hoveredItem && (!selectedItem || selectedItem.id !== hoveredItem.id);
 
   return (
-    <div className="container">
+    <>
+      <div className="container">
+        <div className="vp-title" onClick={() => setShowAbout(!showAbout)}>+</div>
 
-      
-      <div className="vp-title" onClick={() => setShowAbout(!showAbout)}>+</div>
-      
-      {/* About 오버레이 */}
-      <div className={`about-overlay ${showAbout ? 'show' : ''}`} onClick={() => setShowAbout(false)}>
-        <div className="about-content" onClick={(e) => e.stopPropagation()}>
-          <div className="about-close" onClick={() => setShowAbout(false)}>×</div>
-          <div className="about-text">
-            <p>
-              <span className="site-name" onClick={() => { setShowAbout(false); router.reload(); }}>Vanishing Points</span> is a space for encountering images of distant landscapes through the eyes of Google's Street View. It emerged from the realization that, while we each live within separate coordinates, the sun's movement—and our act of watching it—remains shared.
-              In those panoramic fragments, the subject is often missing. No one appears in the frame—only a shadow, a glitch, or a vanishing point hinting at a presence. These images evoke a peculiar sense of disappearing, as though something is watching back from behind the screen.
-            </p>
+        <div className={`about-overlay ${showAbout ? 'show' : ''}`} onClick={() => setShowAbout(false)}>
+          <div className="about-content" onClick={(e) => e.stopPropagation()}>
+            <div className="about-close" onClick={() => setShowAbout(false)}>×</div>
+            <div className="about-text">
+              <p>
+                <span className="site-name" onClick={() => { setShowAbout(false); router.reload(); }}>Vanishing Points</span> is a space for encountering images of distant landscapes through the eyes of Google's Street View. It emerged from the realization that, while we each live within separate coordinates, the sun's movement—and our act of watching it—remains shared.
+                In those panoramic fragments, the subject is often missing. No one appears in the frame—only a shadow, a glitch, or a vanishing point hinting at a presence. These images evoke a peculiar sense of disappearing, as though something is watching back from behind the screen.
+              </p>
 
-            <p>
-              The project is a temporary meditation on memory, absence, and the illusion of proximity. The globe, once known to us through paper maps and childhood globes, appears again in digital form—distorted, flattened, yet strangely emotional. By wandering through these virtual thresholds, we not only glimpse other landscapes but perhaps also reconnect with someone, somewhere, who once stood there.
-            </p>
+              <p>
+                The project is a temporary meditation on memory, absence, and the illusion of proximity. The globe, once known to us through paper maps and childhood globes, appears again in digital form—distorted, flattened, yet strangely emotional. By wandering through these virtual thresholds, we not only glimpse other landscapes but perhaps also reconnect with someone, somewhere, who once stood there.
+              </p>
 
-            <p>
-                This website has been created by <a href="mailto:ahnownj@gmail.com" className="author-link">Eunjae Ahn</a> from 2025 Convergence Design III led by Jeanyoon Choi at <a href="https://www.karts.ac.kr/" target="_blank" className="university-link">Korea National University of Arts</a>.
-            </p>
-            
-            <div className="about-image">
-              <Image
-                src="/img/IMG_2788 copy.JPG"
-                alt="Project Image"
-                width={360}
-                height={240}
-                style={{ width: '100%', height: 'auto', transform: 'scale(4)', transformOrigin: '58% 52%', filter: 'blur(4px)' }}
-              />
+              <p>
+                  This website has been created by <a href="mailto:ahnownj@gmail.com" className="author-link">Eunjae Ahn</a> from 2025 Convergence Design III led by Jeanyoon Choi at <a href="https://www.karts.ac.kr/" target="_blank" className="university-link">Korea National University of Arts</a>.
+              </p>
+              
+              <div className="about-image">
+                <Image
+                  src="/img/IMG_2788 copy.JPG"
+                  alt="Project Image"
+                  width={360}
+                  height={240}
+                  unoptimized
+                  style={{ width: '100%', height: 'auto', transform: 'scale(4)', transformOrigin: '58% 52%', filter: 'blur(4px)' }}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-      
-      <div className="thumbnail-area">
-        {shouldShowThumbnail && (
-          <div className="thumbnail">
-            <div className="streetview-container" style={{ width: '100%', height: '100%' }} />
-          </div>
-        )}
-      </div>
-      
-      <div className="archive-area">
-        <div className="header">
-          <div onClick={() => sort('lat')}>LAT {sortKey === 'lat' && (sortDir === 'asc' ? '▲' : '▼')}</div>
-          <div onClick={() => sort('lng')}>LNG {sortKey === 'lng' && (sortDir === 'asc' ? '▲' : '▼')}</div>
-          <div onClick={() => sort('user')}>USER {sortKey === 'user' && (sortDir === 'asc' ? '▲' : '▼')}</div>
-          <div onClick={() => sort('place')}>TITLE {sortKey === 'place' && (sortDir === 'asc' ? '▲' : '▼')}</div>
-          <div onClick={() => sort('date')}>DATE {sortKey === 'date' && (sortDir === 'asc' ? '▲' : '▼')}</div>
         </div>
         
-        <div className="rows">
-          {data.map((item) => (
-            <div key={item.id}>
-              <div 
-                className={`row ${selectedItems.some(selectedItem => selectedItem.id === item.id) ? 'selected' : ''}`}
-                onMouseEnter={(event) => handleMouseEnter(item, event)} 
-                onMouseLeave={handleMouseLeave} 
-                onClick={() => handleRowClick(item)}
-              >
-                <div className="coord">{item.lat}</div>
-                <div className="coord">{item.lng}</div>
-                <div>{item.user}</div>
-                <div className="place">{item.place}</div>
-                <div>{item.date}</div>
-              </div>
-              
-              {selectedItems.some(selectedItem => selectedItem.id === item.id) && (
-                <div className="main-streetview-container">
-                  <div 
-                    className={`main-streetview main-streetview-${item.id}`}
-                    onClick={() => {
-                      router.push(`/map?lat=${item.lat}&lng=${item.lng}`);
-                    }}
-                  ></div>
-                </div>
-              )}
+        <div className="thumbnail-area">
+          {shouldShowThumbnail && (
+            <div className="thumbnail">
+              <div className="streetview-container" style={{ width: '100%', height: '100%' }} />
             </div>
-          ))}
+          )}
+        </div>
+        
+        <div className="archive-area">
+          <div className="header">
+            <div onClick={() => sort('lat')}>LAT {sortKey === 'lat' && (sortDir === 'asc' ? '▲' : '▼')}</div>
+            <div onClick={() => sort('lng')}>LNG {sortKey === 'lng' && (sortDir === 'asc' ? '▲' : '▼')}</div>
+            <div onClick={() => sort('user')}>USER {sortKey === 'user' && (sortDir === 'asc' ? '▲' : '▼')}</div>
+            <div onClick={() => sort('place')}>TITLE {sortKey === 'place' && (sortDir === 'asc' ? '▲' : '▼')}</div>
+            <div onClick={() => sort('date')}>DATE {sortKey === 'date' && (sortDir === 'asc' ? '▲' : '▼')}</div>
+          </div>
+          
+          <div className="rows">
+            {data.map((item) => {
+              const isSelected = selectedItem?.id === item.id;
+              return (
+                <div key={item.id}>
+                  <div 
+                    className={`row ${isSelected ? 'selected' : ''}`}
+                    onMouseEnter={(event) => handleMouseEnter(item, event)} 
+                    onMouseLeave={handleMouseLeave} 
+                    onClick={() => handleRowClick(item)}
+                  >
+                    <div className="coord">{item.lat}</div>
+                    <div className="coord">{item.lng}</div>
+                    <div>{item.user}</div>
+                    <div className="place">{item.place}</div>
+                    <div>{item.date}</div>
+                  </div>
+                  
+                  {isSelected && (
+                    <div className="main-streetview-container">
+                      <div 
+                        className={`main-streetview main-streetview-${item.id}`}
+                        onClick={() => handleOpenMap(item)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            handleOpenMap(item);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                      ></div>
+                      {selectedNote && (
+                        <div className="note-preview">
+                          <div className="note-preview-text">{selectedNote.text}</div>
+                          <div className="note-preview-meta">
+                            <span>{selectedNote.author || '익명'}</span>
+                            <span>{selectedNote.timestamp || ''}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -361,6 +410,12 @@ export default function Home() {
         
         .gm-style div[style*="color: rgb(68, 68, 68)"][style*="font-size: 10px"] {
           display: none !important;
+        }
+        @media (max-width: 768px) {
+          body {
+            overflow-y: auto;
+            background: #ffffff;
+          }
         }
       `}</style>
       
@@ -401,15 +456,42 @@ export default function Home() {
         
         .main-streetview-container {
           width: 100%;
-          height: 400px;
           grid-column: 1 / -1;
           position: relative;
+          display: flex;
+          flex-direction: column;
+          border: 1px solid #ededed;
+          margin-bottom: 20px;
         }
         
         .main-streetview {
           width: 100%;
-          height: 100%;
+          height: 320px;
           background: #f0f0f0;
+          cursor: pointer;
+        }
+        
+        .note-preview {
+          border-top: 1px solid #ededed;
+          padding: 18px 20px;
+          background: #fff;
+          min-height: 120px;
+        }
+        
+        .note-preview-text {
+          font-size: 14px;
+          color: #2f2f2f;
+          line-height: 1.6;
+          white-space: pre-wrap;
+        }
+        
+        .note-preview-meta {
+          margin-top: 12px;
+          display: flex;
+          justify-content: space-between;
+          font-size: 12px;
+          color: #7a7a7a;
+          letter-spacing: 0.3px;
         }
         
 
@@ -490,6 +572,9 @@ export default function Home() {
         }
         
         @media (max-width: 799px) {
+          .gravity-section {
+            padding: 80px 12px 0;
+          }
           .thumbnail { display: none; }
         }
         
@@ -565,7 +650,7 @@ export default function Home() {
         .about-image {
           margin-top: 500px;
           width: 100%;
-          height: 660px;
+          max-height: 660px;
           overflow: hidden;
         }
         
@@ -584,8 +669,41 @@ export default function Home() {
         .vp-title:hover {
           color: #f0f0f0;
         }
+        
+        @media (max-width: 768px) {
+          .container {
+            flex-direction: column;
+            padding: 70px 16px 40px;
+            gap: 24px;
+            height: auto;
+          }
+          .archive-area {
+            width: 100%;
+          }
+          .rows {
+            height: auto;
+            max-height: none;
+            overflow-y: visible;
+          }
+          .header, .row {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+          }
+          .row {
+            padding: 12px 10px;
+          }
+          .main-streetview-container {
+            height: auto;
+          }
+          .main-streetview {
+            height: 260px;
+          }
+          .note-preview {
+            padding: 14px;
+          }
+        }
       `}</style>
-          </div>
+    </>
   );
 }
 

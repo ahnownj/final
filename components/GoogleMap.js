@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
+import { loadGoogleMaps } from '../lib/googleMaps';
 
 const GoogleMap = ({ 
   center = { lat: 37.5665, lng: 126.9780 }, // 서울 기본 좌표
@@ -25,14 +25,8 @@ const GoogleMap = ({
           throw new Error('Google Maps API 키가 설정되지 않았거나 기본값입니다.');
         }
 
-        const loader = new Loader({
-          apiKey: apiKey,
-          version: 'weekly',
-          libraries: ['places']
-        });
-
         console.log('Google Maps 로딩 시작...');
-        const google = await loader.load();
+        const google = await loadGoogleMaps();
         console.log('Google Maps 로딩 완료!');
         
         if (mapRef.current) {
