@@ -1,22 +1,10 @@
-import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 
 export default function About() {
   const router = useRouter();
-  const [currentEmoji, setCurrentEmoji] = useState('');
-
-  useEffect(() => {
-    const emojis = ['🌍', '🌎', '🌏'];
-    const lastIndex = parseInt(localStorage.getItem('emojiIndex') || '0');
-    const nextIndex = (lastIndex + 1) % 3;
-    setCurrentEmoji(emojis[nextIndex]);
-    localStorage.setItem('emojiIndex', nextIndex.toString());
-  }, []);
 
   return (
     <div className="container">
-      <div className="site-title" onClick={() => location.reload()}>{currentEmoji}</div>
-      
       <div className="thumbnail-area"></div>
       
       <div className="archive-area">
@@ -56,15 +44,6 @@ export default function About() {
           max-width: 100%;
           padding: 100px 10px 0 10px;
           display: flex;
-        }
-        
-        .site-title {
-          position: fixed;
-          top: 10px;
-          left: 20px;
-          font-size: 30px;
-          z-index: 1001;
-          cursor: pointer;
         }
         
         .thumbnail-area { width: 0; position: relative; }

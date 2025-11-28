@@ -16,14 +16,18 @@ export default function Pano({
   const [motionError, setMotionError] = useState(null);
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const orientationHandlerRef = useRef(null);
+  const orientationEventsRef = useRef([]);
+  const orientationWatchdogRef = useRef(null);
+  const orientationActiveRef = useRef(false);
 
   const handleOrientation = useCallback(
     (event) => {
+      orientationActiveRef.current = true;
       if (!streetViewInstanceRef?.current) return;
       const heading =
         typeof event.webkitCompassHeading === 'number'
           ? 360 - event.webkitCompassHeading
-          : event.alpha ?? 0;
+          : event.alpha ?? event.absolute ?? 0;
       const pitchRaw = event.beta ?? 0;
       const pitch = Math.max(-90, Math.min(90, pitchRaw - 90));
       streetViewInstanceRef.current.setPov({ heading, pitch, zoom: 1 });
@@ -31,36 +35,65 @@ export default function Pano({
     [streetViewInstanceRef]
   );
 
+  const clearWatchdog = useCallback(() => {
+    if (orientationWatchdogRef.current) {
+      clearTimeout(orientationWatchdogRef.current);
+      orientationWatchdogRef.current = null;
+    }
+  }, []);
+
+  const removeOrientationListeners = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    orientationEventsRef.current.forEach((eventName) =>
+      window.removeEventListener(eventName, handleOrientation, true)
+    );
+    orientationEventsRef.current = [];
+  }, [handleOrientation]);
+
   const disableMotion = useCallback(() => {
-    if (orientationHandlerRef.current && typeof window !== 'undefined') {
-      window.removeEventListener('deviceorientation', orientationHandlerRef.current, true);
+    if (typeof window !== 'undefined') {
+      removeOrientationListeners();
       orientationHandlerRef.current = null;
     }
+    clearWatchdog();
     setMotionEnabled(false);
-  }, []);
+  }, [clearWatchdog, removeOrientationListeners]);
 
   const enableMotion = useCallback(async () => {
     if (typeof window === 'undefined' || !streetViewInstanceRef?.current) return;
     try {
-      if (
+      const hasIOSPermissionAPI =
         typeof window.DeviceOrientationEvent !== 'undefined' &&
-        typeof window.DeviceOrientationEvent.requestPermission === 'function'
-      ) {
+        typeof window.DeviceOrientationEvent.requestPermission === 'function';
+      if (hasIOSPermissionAPI) {
         const permission = await window.DeviceOrientationEvent.requestPermission();
         if (permission !== 'granted') {
           setMotionError('모션 센서 접근이 거부되었습니다.');
           return;
         }
       }
-      window.addEventListener('deviceorientation', handleOrientation, true);
+      const events = ['deviceorientation'];
+      if ('ondeviceorientationabsolute' in window) {
+        events.push('deviceorientationabsolute');
+      }
+      events.forEach((eventName) => window.addEventListener(eventName, handleOrientation, true));
+      orientationEventsRef.current = events;
       orientationHandlerRef.current = handleOrientation;
+      orientationActiveRef.current = false;
+      clearWatchdog();
+      orientationWatchdogRef.current = setTimeout(() => {
+        if (!orientationActiveRef.current) {
+          setMotionError('이 장치는 모션 센서를 제공하지 않습니다.');
+          disableMotion();
+        }
+      }, 2500);
       setMotionEnabled(true);
       setMotionError(null);
     } catch (err) {
       console.error('Failed to enable motion controls', err);
       setMotionError('모션 센서를 사용할 수 없습니다.');
     }
-  }, [handleOrientation, streetViewInstanceRef]);
+  }, [clearWatchdog, disableMotion, handleOrientation, streetViewInstanceRef]);
 
   const handleClose = () => {
     disableMotion();
@@ -96,7 +129,13 @@ export default function Pano({
     }
   }, [isActive, disableMotion, enableMotion]);
 
-  useEffect(() => () => disableMotion(), [disableMotion]);
+  useEffect(
+    () => () => {
+      clearWatchdog();
+      disableMotion();
+    },
+    [clearWatchdog, disableMotion]
+  );
 
   return (
     <>

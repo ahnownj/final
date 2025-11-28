@@ -1,8 +1,8 @@
 import "@/styles/globals.css";
 import { createGlobalStyle, ThemeProvider } from 'styled-components';
-// import CustomCursor from '@/components/layout/Cursor';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/router';
+import GlobeOverlay from '@/components/globe';
 
 const GlobalStyle = createGlobalStyle`
   body {
@@ -21,31 +21,6 @@ const theme = {
 
 export default function App({ Component, pageProps }) {
   const router = useRouter();
-  const [currentEmoji, setCurrentEmoji] = useState('');
-
-  // 회전하는 지구본 이모지
-  useEffect(() => {
-    const emojis = ['🌍', '🌎', '🌏'];
-    let currentIndex = 0;
-    
-    setCurrentEmoji(emojis[currentIndex]);
-    
-    const interval = setInterval(() => {
-      currentIndex = (currentIndex + 1) % 3;
-      setCurrentEmoji(emojis[currentIndex]);
-    }, 2000);
-    
-    return () => clearInterval(interval);
-  }, []);
-
-  // 지구본 클릭 핸들러
-  const handleGlobeClick = () => {
-    if (router.pathname === '/') {
-      router.push('/map');
-    } else if (router.pathname === '/map') {
-      router.push('/');
-    }
-  };
 
   useEffect(() => {
     let scrollTimer;
@@ -70,26 +45,8 @@ export default function App({ Component, pageProps }) {
   return (
     <ThemeProvider theme={theme}>
       <GlobalStyle />
-      {/* <CustomCursor /> */}
-      {/* map 페이지가 아닐 때만 지구본 표시 (map 페이지는 자체 지구본을 가짐) */}
-      {router.pathname !== '/map' && (
-        <div className="site-title" onClick={handleGlobeClick}>
-          {currentEmoji}
-        </div>
-      )}
+      <GlobeOverlay key={router.asPath} />
       <Component {...pageProps} />
-      
-      <style jsx>{`
-        .site-title {
-          position: fixed;
-          top: 10px;
-          left: 50%;
-          transform: translateX(-50%);
-          font-size: 28px;
-          z-index: 1001;
-          cursor: pointer;
-        }
-      `}</style>
     </ThemeProvider>
   );
 }

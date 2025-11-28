@@ -22,6 +22,7 @@ const randomizeAround = ({ lat, lng }) => {
     lng: normalizeLng(lng + lngOffset),
   };
 };
+
 export default function MapMobile() {
   const router = useRouter();
   const mapRef = useRef(null);
@@ -33,12 +34,10 @@ export default function MapMobile() {
 
   const [activePlace, setActivePlace] = useState(null);
   const [isStreetViewActive, setIsStreetViewActive] = useState(false);
-  const [currentEmoji, setCurrentEmoji] = useState('🌍');
   const [error, setError] = useState(null);
   const [isStreetViewReady, setIsStreetViewReady] = useState(false);
   const randomizedCenterRef = useRef(null);
 
-  // 초기 중심점
   const getInitialCenter = () => {
     if (typeof window === 'undefined') return DEFAULT_CENTER;
     const { lat, lng } = router.query;
@@ -57,18 +56,24 @@ export default function MapMobile() {
     return saved ? JSON.parse(saved) : DEFAULT_CENTER;
   };
 
-  // 유효한 places 필터링
-  const validPlaces = places.filter(
-    (p) => p && !isNaN(parseFloat(p.lat)) && !isNaN(parseFloat(p.lng))
-  ).map((p, i) => ({
-    id: i,
-    lat: parseFloat(p.lat),
-    lng: parseFloat(p.lng),
-    user: p.user || '',
-    place: p.place || '',
-    date: p.date || '',
-    url: p.url || '',
-  }));
+  const validPlaces = places
+    .filter((p) => p && !isNaN(parseFloat(p.lat)) && !isNaN(parseFloat(p.lng)))
+    .map((p, i) => ({
+      id: i,
+      lat: parseFloat(p.lat),
+      lng: parseFloat(p.lng),
+      user: p.user || '',
+      place: p.place || '',
+      date: p.date || '',
+      url: p.url || '',
+    }));
+
+  const getInitialHeading = (tiles) => {
+    if (!tiles) return 0;
+    const candidates = [tiles.centerHeading, tiles.heading, tiles.northHeading, tiles.originalHeading];
+    const valid = candidates.find((value) => Number.isFinite(value));
+    return Number.isFinite(valid) ? valid : 0;
+  };
 
   const openPlaceInStreetView = useCallback(
     (place) => {
@@ -76,38 +81,25 @@ export default function MapMobile() {
       setActivePlace(place);
       setError(null);
       const latLng = new googleRef.current.maps.LatLng(place.lat, place.lng);
-      streetViewServiceRef.current.getPanorama(
-        { location: latLng, radius: 1200 },
-        (result, status) => {
-          if (status === googleRef.current.maps.StreetViewStatus.OK) {
-            streetViewInstanceRef.current.setPano(result.location.pano);
-            streetViewInstanceRef.current.setPov({
-              heading: result.tiles?.heading || 0,
-              pitch: 0,
-              zoom: 1,
-            });
-            streetViewInstanceRef.current.setVisible(true);
-            setIsStreetViewActive(true);
-          } else {
-            setError('해당 위치의 스트리트뷰 이미지를 찾을 수 없습니다.');
-            streetViewInstanceRef.current.setVisible(false);
-            setIsStreetViewActive(false);
-          }
+      streetViewServiceRef.current.getPanorama({ location: latLng, radius: 1200 }, (result, status) => {
+        if (status === googleRef.current.maps.StreetViewStatus.OK) {
+          streetViewInstanceRef.current.setPano(result.location.pano);
+          streetViewInstanceRef.current.setPov({
+              heading: getInitialHeading(result.tiles),
+            pitch: 0,
+            zoom: 1,
+          });
+          streetViewInstanceRef.current.setVisible(true);
+          setIsStreetViewActive(true);
+        } else {
+          setError('해당 위치의 스트리트뷰 이미지를 찾을 수 없습니다.');
+          streetViewInstanceRef.current.setVisible(false);
+          setIsStreetViewActive(false);
         }
-      );
+      });
     },
     []
   );
-
-  // 이모지 회전
-  useEffect(() => {
-    const emojis = ['🌍', '🌎', '🌏'];
-    let idx = 0;
-    const interval = setInterval(() => {
-      setCurrentEmoji(emojis[(idx = (idx + 1) % emojis.length)]);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     let rafId;
@@ -124,7 +116,6 @@ export default function MapMobile() {
     };
   }, []);
 
-  // Google Maps 초기화
   useEffect(() => {
     if (!mapRef.current || !router.isReady || !isStreetViewReady || !streetViewRef.current) {
       return;
@@ -140,7 +131,6 @@ export default function MapMobile() {
         const center = getInitialCenter();
         const zoom = router.query.lat && router.query.lng ? 11 : 4;
 
-        // 지도 생성
         const map = new google.maps.Map(mapRef.current, {
           center,
           zoom,
@@ -151,7 +141,6 @@ export default function MapMobile() {
         });
         mapInstanceRef.current = map;
 
-        // Street View 생성
         const streetView = new google.maps.StreetViewPanorama(streetViewRef.current, {
           visible: false,
           disableDefaultUI: true,
@@ -162,7 +151,6 @@ export default function MapMobile() {
         streetViewServiceRef.current = new google.maps.StreetViewService();
         googleRef.current = google;
 
-        // 마커 생성
         validPlaces.forEach((place) => {
           const marker = new google.maps.Marker({
             position: { lat: place.lat, lng: place.lng },
@@ -177,9 +165,7 @@ export default function MapMobile() {
             },
           });
 
-          const handleMarkerInteraction = () => openPlaceInStreetView(place);
-          marker.addListener('click', handleMarkerInteraction);
-
+          marker.addListener('click', () => openPlaceInStreetView(place));
         });
       } catch (err) {
         console.error('Google Maps 초기화 실패:', err);
@@ -187,8 +173,10 @@ export default function MapMobile() {
     };
 
     init();
-    return () => { mounted = false; };
-  }, [router.isReady, router.query, isStreetViewReady]);
+    return () => {
+      mounted = false;
+    };
+  }, [router.isReady, router.query, isStreetViewReady, openPlaceInStreetView, validPlaces]);
 
   const closeStreetView = () => {
     setIsStreetViewActive(false);
@@ -202,10 +190,6 @@ export default function MapMobile() {
   return (
     <>
       <div className="map-mobile">
-        <div className="site-title" onClick={() => router.push('/')}>
-          {currentEmoji}
-        </div>
-
         <div ref={mapRef} className="map-canvas" />
 
         <Pano
@@ -230,17 +214,8 @@ export default function MapMobile() {
           width: 100%;
           height: 100%;
         }
-        .site-title {
-          position: absolute;
-          top: 12px;
-          left: 50%;
-          transform: translateX(-50%);
-          font-size: 28px;
-          color: #fff;
-          z-index: 10;
-          cursor: pointer;
-        }
       `}</style>
     </>
   );
 }
+

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import places from '../data/places';
+import { GLOBE_SIZE, getNextGlobeRoute } from './globe';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
 const rand = (min, max) => min + Math.random() * (max - min);
-
 const pickRandomPlaces = (count) => {
   const filtered = places.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   for (let i = filtered.length - 1; i > 0; i -= 1) {
@@ -14,26 +14,35 @@ const pickRandomPlaces = (count) => {
   return filtered.slice(0, count);
 };
 
-const createBodies = (nodes, bounds) => {
+const createBodies = (nodes, metas, bounds) => {
   const bodies = [];
-  nodes.forEach((node) => {
+  nodes.forEach((node, index) => {
     if (!node) return;
-    const size = node.offsetWidth || 100;
+    const meta = metas[index] || {};
+    const size = node.offsetWidth || meta.size || 100;
     const radius = size / 2;
-    let x = rand(0, Math.max(bounds.width - size, 0));
-    let y = rand(0, Math.max(bounds.height - size, 0));
-    let attempts = 0;
-    while (
-      attempts < 80 &&
-      bodies.some((body) => {
-        const dx = x + radius - (body.x + body.radius);
-        const dy = y + radius - (body.y + body.radius);
-        return Math.hypot(dx, dy) < radius + body.radius + 4;
-      })
-    ) {
-      x = rand(0, Math.max(bounds.width - size, 0));
-      y = rand(0, Math.max(bounds.height - size, 0));
-      attempts += 1;
+    const globeX = (bounds.width - size) / 2;
+    const globeY = 12;
+    let x = meta.isGlobe
+      ? clamp(globeX, 0, Math.max(bounds.width - size, 0))
+      : rand(0, Math.max(bounds.width - size, 0));
+    let y = meta.isGlobe
+      ? clamp(globeY, 0, Math.max(bounds.height - size, 0))
+      : rand(0, Math.max(bounds.height - size, 0));
+    if (!meta.isGlobe) {
+      let attempts = 0;
+      while (
+        attempts < 120 &&
+        bodies.some((body) => {
+          const dx = x + radius - (body.x + body.radius);
+          const dy = y + radius - (body.y + body.radius);
+          return Math.hypot(dx, dy) < radius + body.radius;
+        })
+      ) {
+        x = rand(0, Math.max(bounds.width - size, 0));
+        y = rand(0, Math.max(bounds.height - size, 0));
+        attempts += 1;
+      }
     }
     bodies.push({ node, size, radius, x, y, vx: 0, vy: 0, angle: 0 });
   });
@@ -63,31 +72,36 @@ const applyBounds = (body, bounds) => {
   }
 };
 
-const resolveCollisions = (bodies) => {
-  for (let i = 0; i < bodies.length; i += 1) {
-    for (let j = i + 1; j < bodies.length; j += 1) {
-      const a = bodies[i];
-      const b = bodies[j];
-      const dx = a.x + a.radius - (b.x + b.radius);
-      const dy = a.y + a.radius - (b.y + b.radius);
-      const distance = Math.hypot(dx, dy) || 0.0001;
-      const overlap = a.radius + b.radius - distance;
-      if (overlap > 0) {
-        const nx = dx / distance;
-        const ny = dy / distance;
-        const shift = overlap / 2;
-        a.x += nx * shift;
-        a.y += ny * shift;
-        b.x -= nx * shift;
-        b.y -= ny * shift;
+const resolveCollisions = (bodies, iterations = 4) => {
+  for (let iter = 0; iter < iterations; iter += 1) {
+    let adjusted = false;
+    for (let i = 0; i < bodies.length; i += 1) {
+      for (let j = i + 1; j < bodies.length; j += 1) {
+        const a = bodies[i];
+        const b = bodies[j];
+        const dx = a.x + a.radius - (b.x + b.radius);
+        const dy = a.y + a.radius - (b.y + b.radius);
+        const distance = Math.hypot(dx, dy) || 0.0001;
+        const overlap = a.radius + b.radius - distance;
+        if (overlap > 0) {
+          const nx = dx / distance;
+          const ny = dy / distance;
+          const shift = overlap / 2;
+          a.x += nx * shift;
+          a.y += ny * shift;
+          b.x -= nx * shift;
+          b.y -= ny * shift;
 
-        const impulse = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
-        a.vx += impulse * nx * 0.05;
-        a.vy += impulse * ny * 0.05;
-        b.vx -= impulse * nx * 0.05;
-        b.vy -= impulse * ny * 0.05;
+          const impulse = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+          a.vx += impulse * nx * 0.04;
+          a.vy += impulse * ny * 0.04;
+          b.vx -= impulse * nx * 0.04;
+          b.vy -= impulse * ny * 0.04;
+          adjusted = true;
+        }
       }
     }
+    if (!adjusted) break;
   }
 };
 
@@ -123,18 +137,17 @@ export default function GravityField({ maxItems = 30 }) {
     if (!isMounted) return;
     const count = Math.max(2, Math.min(maxItems, Math.floor(Math.random() * 29) + 2));
     const selected = pickRandomPlaces(count);
-    setItems(
-      selected.map((place, idx) => ({
-        id: `${place.lat}-${place.lng}-${idx}`,
-        lat: place.lat,
-        lng: place.lng,
-        label: place.place || place.user || 'Unknown',
-        size: 80 + Math.random() * 60,
-        url: key
-          ? `https://maps.googleapis.com/maps/api/streetview?size=400x400&location=${place.lat},${place.lng}&fov=90&key=${key}`
-          : null,
-      }))
-    );
+    const placesWithThumbs = selected.map((place, idx) => ({
+      id: `${place.lat}-${place.lng}-${idx}`,
+      lat: place.lat,
+      lng: place.lng,
+      label: place.place || place.user || 'Unknown',
+      size: 80 + Math.random() * 60,
+      url: key
+        ? `https://maps.googleapis.com/maps/api/streetview?size=400x400&location=${place.lat},${place.lng}&fov=90&key=${key}`
+        : null,
+    }));
+    setItems([{ id: 'globe-home', isGlobe: true, size: GLOBE_SIZE, label: 'home' }, ...placesWithThumbs]);
     const angle = Math.random() * Math.PI * 2;
     const magnitude = 18 + Math.random() * 18;
     gravityRef.current = { x: Math.cos(angle) * magnitude, y: Math.sin(angle) * magnitude };
@@ -146,7 +159,7 @@ export default function GravityField({ maxItems = 30 }) {
     if (!container || nodes.length === 0) return undefined;
 
     let bounds = container.getBoundingClientRect();
-    const bodies = createBodies(nodes, bounds);
+    const bodies = createBodies(nodes, items, bounds);
     renderBodies(bodies);
 
     let raf = null;
@@ -250,7 +263,11 @@ export default function GravityField({ maxItems = 30 }) {
       activeItem: null,
     };
     if (shouldNavigate && item) {
-      router.push(`/map?lat=${item.lat}&lng=${item.lng}`);
+      if (item.isGlobe) {
+        router.push(getNextGlobeRoute(router.asPath));
+      } else {
+        router.push(`/map?lat=${item.lat}&lng=${item.lng}`);
+      }
     }
   };
 
@@ -270,12 +287,19 @@ export default function GravityField({ maxItems = 30 }) {
           ref={(node) => {
             itemRefs.current[index] = node;
           }}
-          className="gravity-card"
+          className={`gravity-card${item.isGlobe ? ' globe' : ''}`}
           style={{ width: item.size, height: item.size }}
           onPointerDown={(event) => startDrag(event, index, item)}
           onDragStart={(event) => event.preventDefault()}
         >
-          {item.url ? (
+          {item.isGlobe ? (
+            <img
+              src="/globe.svg"
+              alt="home globe"
+              className="globe-icon"
+              draggable={false}
+            />
+          ) : item.url ? (
             <img
               src={item.url}
               alt={item.label || 'place thumbnail'}
@@ -314,7 +338,7 @@ export default function GravityField({ maxItems = 30 }) {
           -webkit-user-drag: none;
           border-radius: inherit;
         }
-        .gravity-card span {
+        .gravity-card:not(.globe) span {
           display: block;
           width: 100%;
           height: 100%;
@@ -327,6 +351,12 @@ export default function GravityField({ maxItems = 30 }) {
           align-items: center;
           justify-content: center;
           border-radius: inherit;
+        }
+        .globe-icon {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          display: block;
         }
         .gravity-card:focus-visible {
           outline: 1px solid #666;
