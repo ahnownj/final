@@ -1,15 +1,16 @@
 import { useRouter } from 'next/router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 
 export const GLOBE_SIZE = 40;
-const ROUTE_SEQUENCE = ['/gravity', '/', '/map'];
-const EDGE_PADDING = 12;
+const ROUTE_SEQUENCE = ['/main', '/list', '/map'];
+const EDGE_PADDING = 0;
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
 
 const normalizePath = (path) => {
   if (typeof path !== 'string' || path.length === 0) return '/';
   const [clean] = path.split('?');
-  return clean || '/';
+  if (!clean || clean === '/') return '/list';
+  return clean;
 };
 
 export const getNextGlobeRoute = (path) => {
@@ -19,7 +20,22 @@ export const getNextGlobeRoute = (path) => {
   return ROUTE_SEQUENCE[(idx + 1) % ROUTE_SEQUENCE.length];
 };
 
-export const shouldHideGlobe = (path) => normalizePath(path) === '/gravity';
+export const shouldHideGlobe = (path) => normalizePath(path) === '/main';
+
+export const pushNextGlobeRoute = (router) => {
+  const nextRoute = getNextGlobeRoute(router.asPath);
+  if (nextRoute === '/map') {
+    router.push({
+      pathname: '/map',
+      query: {
+        source: 'globe',
+        seed: Date.now(),
+      },
+    });
+    return;
+  }
+  router.push(nextRoute);
+};
 
 const randomDrift = () => {
   const angle = Math.random() * Math.PI * 2;
@@ -142,6 +158,10 @@ export default function GlobeOverlay() {
     ballRef.current.style.transform = `translate(${state.x}px, ${state.y}px)`;
   };
 
+  const goToNextRoute = useCallback(() => {
+    pushNextGlobeRoute(router);
+  }, [router]);
+
   const handlePointerUp = () => {
     const state = stateRef.current;
     if (!state.dragging) return;
@@ -149,7 +169,7 @@ export default function GlobeOverlay() {
     state.dragging = false;
     state.lastPointerTime = 0;
     if (!state.moved) {
-      router.push(getNextGlobeRoute(router.asPath));
+      goToNextRoute();
     }
   };
 

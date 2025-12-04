@@ -12,56 +12,72 @@ export default function Pano({
 }) {
   const router = useRouter();
   const [motionEnabled, setMotionEnabled] = useState(false);
-  const [needsPermissionTap, setNeedsPermissionTap] = useState(false);
   const [motionError, setMotionError] = useState(null);
+  const [hasMotionCapability, setHasMotionCapability] = useState(true);
+
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const orientationHandlerRef = useRef(null);
-  const orientationEventsRef = useRef([]);
-  const orientationWatchdogRef = useRef(null);
-  const orientationActiveRef = useRef(false);
+  const sensorTimeoutRef = useRef(null);
+  const lastPovRef = useRef({ heading: 0, pitch: 0 });
 
-  const handleOrientation = useCallback(
-    (event) => {
-      orientationActiveRef.current = true;
-      if (!streetViewInstanceRef?.current) return;
-      const heading =
-        typeof event.webkitCompassHeading === 'number'
-          ? 360 - event.webkitCompassHeading
-          : event.alpha ?? event.absolute ?? 0;
-      const pitchRaw = event.beta ?? 0;
-      const pitch = Math.max(-90, Math.min(90, pitchRaw - 90));
-      streetViewInstanceRef.current.setPov({ heading, pitch, zoom: 1 });
-    },
-    [streetViewInstanceRef]
-  );
+  const clampPitch = (value) => Math.max(-90, Math.min(90, value));
+  const normalizeHeading = (value) => ((value % 360) + 360) % 360;
 
-  const clearWatchdog = useCallback(() => {
-    if (orientationWatchdogRef.current) {
-      clearTimeout(orientationWatchdogRef.current);
-      orientationWatchdogRef.current = null;
+  const clearSensorTimeout = useCallback(() => {
+    if (sensorTimeoutRef.current) {
+      clearTimeout(sensorTimeoutRef.current);
+      sensorTimeoutRef.current = null;
     }
   }, []);
 
-  const removeOrientationListeners = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    orientationEventsRef.current.forEach((eventName) =>
-      window.removeEventListener(eventName, handleOrientation, true)
-    );
-    orientationEventsRef.current = [];
-  }, [handleOrientation]);
+  const handleOrientation = useCallback(
+    (event) => {
+      if (!streetViewInstanceRef?.current) return;
+      clearSensorTimeout();
+
+      const webkitHeading = Number.isFinite(event.webkitCompassHeading)
+        ? event.webkitCompassHeading
+        : null;
+      const alphaHeading = Number.isFinite(event.alpha) ? event.alpha : null;
+      const heading = normalizeHeading(
+        webkitHeading ?? alphaHeading ?? lastPovRef.current.heading
+      );
+
+      const beta = Number.isFinite(event.beta) ? event.beta : lastPovRef.current.pitch + 90;
+      const pitch = clampPitch(beta - 90);
+
+      lastPovRef.current = { heading, pitch };
+      streetViewInstanceRef.current.setPov({ heading, pitch, zoom: 1 });
+    },
+    [clearSensorTimeout, streetViewInstanceRef]
+  );
 
   const disableMotion = useCallback(() => {
-    if (typeof window !== 'undefined') {
-      removeOrientationListeners();
+    if (typeof window !== 'undefined' && orientationHandlerRef.current) {
+      window.removeEventListener('deviceorientation', orientationHandlerRef.current, true);
+      if ('ondeviceorientationabsolute' in window) {
+        window.removeEventListener('deviceorientationabsolute', orientationHandlerRef.current, true);
+      }
       orientationHandlerRef.current = null;
     }
-    clearWatchdog();
+    clearSensorTimeout();
     setMotionEnabled(false);
-  }, [clearWatchdog, removeOrientationListeners]);
+  }, [clearSensorTimeout]);
 
   const enableMotion = useCallback(async () => {
     if (typeof window === 'undefined' || !streetViewInstanceRef?.current) return;
     try {
+      if (!window.isSecureContext) {
+        setMotionError('모션 센서는 HTTPS(또는 localhost) 환경에서만 동작합니다.');
+        setHasMotionCapability(false);
+        return;
+      }
+      if (typeof window.DeviceOrientationEvent === 'undefined') {
+        setMotionError('이 장치는 모션 센서를 제공하지 않습니다.');
+        setHasMotionCapability(false);
+        return;
+      }
+
       const hasIOSPermissionAPI =
         typeof window.DeviceOrientationEvent !== 'undefined' &&
         typeof window.DeviceOrientationEvent.requestPermission === 'function';
@@ -72,28 +88,28 @@ export default function Pano({
           return;
         }
       }
-      const events = ['deviceorientation'];
+
+      window.addEventListener('deviceorientation', handleOrientation, true);
       if ('ondeviceorientationabsolute' in window) {
-        events.push('deviceorientationabsolute');
+        window.addEventListener('deviceorientationabsolute', handleOrientation, true);
       }
-      events.forEach((eventName) => window.addEventListener(eventName, handleOrientation, true));
-      orientationEventsRef.current = events;
+
       orientationHandlerRef.current = handleOrientation;
-      orientationActiveRef.current = false;
-      clearWatchdog();
-      orientationWatchdogRef.current = setTimeout(() => {
-        if (!orientationActiveRef.current) {
-          setMotionError('이 장치는 모션 센서를 제공하지 않습니다.');
-          disableMotion();
-        }
+      clearSensorTimeout();
+      sensorTimeoutRef.current = window.setTimeout(() => {
+        sensorTimeoutRef.current = null;
+        disableMotion();
+        setHasMotionCapability(false);
+        setMotionError('이 기기에서는 모션 센서 데이터를 받을 수 없습니다.');
       }, 2500);
       setMotionEnabled(true);
+      setHasMotionCapability(true);
       setMotionError(null);
     } catch (err) {
       console.error('Failed to enable motion controls', err);
       setMotionError('모션 센서를 사용할 수 없습니다.');
     }
-  }, [clearWatchdog, disableMotion, handleOrientation, streetViewInstanceRef]);
+  }, [clearSensorTimeout, disableMotion, handleOrientation, streetViewInstanceRef]);
 
   const handleClose = () => {
     disableMotion();
@@ -116,25 +132,20 @@ export default function Pano({
       setIsNoteOpen(false);
       return;
     }
-
-    if (
-      typeof window !== 'undefined' &&
-      typeof window.DeviceOrientationEvent !== 'undefined' &&
-      typeof window.DeviceOrientationEvent.requestPermission === 'function'
-    ) {
-      setNeedsPermissionTap(true);
-    } else {
-      setNeedsPermissionTap(false);
-      enableMotion();
+    if (typeof window !== 'undefined') {
+      const supported = typeof window.DeviceOrientationEvent !== 'undefined';
+      setHasMotionCapability(supported);
+      if (!supported) {
+        setMotionError('이 장치는 모션 센서를 제공하지 않습니다.');
+      }
     }
-  }, [isActive, disableMotion, enableMotion]);
+  }, [isActive, disableMotion]);
 
   useEffect(
     () => () => {
-      clearWatchdog();
       disableMotion();
     },
-    [clearWatchdog, disableMotion]
+    [disableMotion]
   );
 
   return (
@@ -144,19 +155,30 @@ export default function Pano({
         {isActive && (
           <>
             <div className="streetview-ui">
-              <button className="close-button" onClick={handleClose} aria-label="Close Street View">
+              <button
+                className="floating-btn floating-btn--round close-button"
+                onClick={handleClose}
+                aria-label="Close Street View"
+              >
                 ✕
               </button>
-              {needsPermissionTap && !motionEnabled && (
-                <button className="motion-button" onClick={enableMotion}>
+              {!motionEnabled && hasMotionCapability && (
+                <button className="floating-btn floating-btn--pill motion-button" onClick={enableMotion}>
                   모션 켜기
                 </button>
               )}
-              <button className="world-button" onClick={openWorldView} disabled={!activePlace}>
+              <button
+                className="floating-btn floating-btn--pill world-button"
+                onClick={openWorldView}
+                disabled={!activePlace}
+              >
                 3D
               </button>
             </div>
-            <button className="note-button" onClick={() => setIsNoteOpen((prev) => !prev)}>
+            <button
+              className="floating-btn floating-btn--round note-button"
+              onClick={() => setIsNoteOpen((prev) => !prev)}
+            >
               💬
             </button>
             {motionError && <div className="error-banner">{motionError}</div>}
@@ -194,16 +216,22 @@ export default function Pano({
           z-index: 25;
           align-items: center;
         }
-        .streetview-ui button {
+        .floating-btn {
           border: none;
-          padding: 8px 14px;
-          font-size: 13px;
+          background: transparent;
           color: #fff;
           cursor: pointer;
-          background: rgba(0, 0, 0, 0.4);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: opacity 0.2s ease;
+        }
+        .floating-btn--pill {
+          padding: 6px 12px;
+          font-size: 13px;
           border-radius: 999px;
         }
-        .close-button {
+        .floating-btn--round {
           width: 36px;
           height: 36px;
           border-radius: 50%;
@@ -211,16 +239,7 @@ export default function Pano({
           line-height: 1;
           padding: 0;
         }
-        .world-button {
-          border: none;
-          padding: 8px 12px;
-          font-size: 12px;
-          color: #000;
-          background: #ffd400;
-          border-radius: 999px;
-          cursor: pointer;
-        }
-        .world-button:disabled {
+        .floating-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
         }
@@ -234,8 +253,7 @@ export default function Pano({
           color: #fff;
           cursor: pointer;
           z-index: 25;
-          background: rgba(0, 0, 0, 0.4);
-          border-radius: 50%;
+          background: transparent;
         }
         .error-banner {
           position: absolute;

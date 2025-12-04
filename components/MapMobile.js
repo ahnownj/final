@@ -38,24 +38,6 @@ export default function MapMobile() {
   const [isStreetViewReady, setIsStreetViewReady] = useState(false);
   const randomizedCenterRef = useRef(null);
 
-  const getInitialCenter = () => {
-    if (typeof window === 'undefined') return DEFAULT_CENTER;
-    const { lat, lng } = router.query;
-    if (lat && lng) {
-      const center = { lat: parseFloat(lat), lng: parseFloat(lng) };
-      if (Number.isFinite(center.lat) && Number.isFinite(center.lng)) {
-        if (!randomizedCenterRef.current) {
-          randomizedCenterRef.current = randomizeAround(center);
-        }
-        localStorage.setItem('mapLastCenter', JSON.stringify(center));
-        return randomizedCenterRef.current;
-      }
-    }
-    randomizedCenterRef.current = null;
-    const saved = localStorage.getItem('mapLastCenter');
-    return saved ? JSON.parse(saved) : DEFAULT_CENTER;
-  };
-
   const validPlaces = places
     .filter((p) => p && !isNaN(parseFloat(p.lat)) && !isNaN(parseFloat(p.lng)))
     .map((p, i) => ({
@@ -67,6 +49,35 @@ export default function MapMobile() {
       date: p.date || '',
       url: p.url || '',
     }));
+
+  const pickRandomPlaceCenter = () => {
+    if (!validPlaces.length) return DEFAULT_CENTER;
+    const randomIndex = Math.floor(Math.random() * validPlaces.length);
+    const randomized = randomizeAround(validPlaces[randomIndex]);
+    randomizedCenterRef.current = randomized;
+    return randomized;
+  };
+
+  const getInitialCenter = () => {
+    if (typeof window === 'undefined') return DEFAULT_CENTER;
+    const { lat, lng, source } = router.query;
+    if (lat && lng) {
+      const center = { lat: parseFloat(lat), lng: parseFloat(lng) };
+      if (Number.isFinite(center.lat) && Number.isFinite(center.lng)) {
+        if (!randomizedCenterRef.current) {
+          randomizedCenterRef.current = randomizeAround(center);
+        }
+        localStorage.setItem('mapLastCenter', JSON.stringify(center));
+        return randomizedCenterRef.current;
+      }
+    }
+    if (source === 'globe') {
+      return pickRandomPlaceCenter();
+    }
+    randomizedCenterRef.current = null;
+    const saved = localStorage.getItem('mapLastCenter');
+    return saved ? JSON.parse(saved) : DEFAULT_CENTER;
+  };
 
   const getInitialHeading = (tiles) => {
     if (!tiles) return 0;
@@ -129,7 +140,9 @@ export default function MapMobile() {
         if (!mounted || !mapRef.current) return;
 
         const center = getInitialCenter();
-        const zoom = router.query.lat && router.query.lng ? 11 : 4;
+        const hasLatLngQuery = Boolean(router.query.lat && router.query.lng);
+        const isFromGlobe = router.query.source === 'globe';
+        const zoom = hasLatLngQuery || isFromGlobe ? 11 : 4;
 
         const map = new google.maps.Map(mapRef.current, {
           center,

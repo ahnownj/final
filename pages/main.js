@@ -2,7 +2,7 @@ import dynamic from 'next/dynamic';
 
 const GravityField = dynamic(() => import('../components/gravity'), { ssr: false });
 
-export default function GravityPage() {
+export default function MainPage() {
   return (
     <div className="gravity-page">
       <GravityField maxItems={30} />

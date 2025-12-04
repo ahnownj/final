@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import places from '../data/places';
-import { GLOBE_SIZE, getNextGlobeRoute } from './globe';
+import { GLOBE_SIZE, pushNextGlobeRoute } from './globe';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
 const rand = (min, max) => min + Math.random() * (max - min);
@@ -264,7 +264,7 @@ export default function GravityField({ maxItems = 30 }) {
     };
     if (shouldNavigate && item) {
       if (item.isGlobe) {
-        router.push(getNextGlobeRoute(router.asPath));
+        pushNextGlobeRoute(router);
       } else {
         router.push(`/map?lat=${item.lat}&lng=${item.lng}`);
       }
