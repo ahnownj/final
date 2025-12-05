@@ -1,2 +1,2 @@
-export { default } from './list';
+export { default } from './gravity';
 

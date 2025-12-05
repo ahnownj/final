@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/router';
+import { useCallback, useEffect, useState } from 'react';
 import Note from './note';
+import useHeadTracking from './hooks/useHeadTracking';
+
+const requestPermission = async (fn) => {
+  if (typeof fn !== 'function') return true;
+  const result = await fn();
+  if (result !== 'granted') throw new Error('permission denied');
+  return true;
+};
 
 export default function Pano({
   streetViewRef,
@@ -10,143 +17,78 @@ export default function Pano({
   error,
   activePlace,
 }) {
-  const router = useRouter();
-  const [motionEnabled, setMotionEnabled] = useState(false);
-  const [motionError, setMotionError] = useState(null);
-  const [hasMotionCapability, setHasMotionCapability] = useState(true);
-
   const [isNoteOpen, setIsNoteOpen] = useState(false);
-  const orientationHandlerRef = useRef(null);
-  const sensorTimeoutRef = useRef(null);
-  const lastPovRef = useRef({ heading: 0, pitch: 0 });
-
-  const clampPitch = (value) => Math.max(-90, Math.min(90, value));
-  const normalizeHeading = (value) => ((value % 360) + 360) % 360;
-
-  const clearSensorTimeout = useCallback(() => {
-    if (sensorTimeoutRef.current) {
-      clearTimeout(sensorTimeoutRef.current);
-      sensorTimeoutRef.current = null;
-    }
-  }, []);
-
-  const handleOrientation = useCallback(
-    (event) => {
-      if (!streetViewInstanceRef?.current) return;
-      clearSensorTimeout();
-
-      const webkitHeading = Number.isFinite(event.webkitCompassHeading)
-        ? event.webkitCompassHeading
-        : null;
-      const alphaHeading = Number.isFinite(event.alpha) ? event.alpha : null;
-      const heading = normalizeHeading(
-        webkitHeading ?? alphaHeading ?? lastPovRef.current.heading
-      );
-
-      const beta = Number.isFinite(event.beta) ? event.beta : lastPovRef.current.pitch + 90;
-      const pitch = clampPitch(beta - 90);
-
-      lastPovRef.current = { heading, pitch };
-      streetViewInstanceRef.current.setPov({ heading, pitch, zoom: 1 });
-    },
-    [clearSensorTimeout, streetViewInstanceRef]
-  );
+  const [headPose, setHeadPose] = useState(null);
+  const {
+    start: startHeadTracking,
+    stop: stopHeadTracking,
+    status: headTrackingStatus,
+    error: headTrackingError,
+  } = useHeadTracking(streetViewInstanceRef, { onPose: setHeadPose });
 
   const disableMotion = useCallback(() => {
-    if (typeof window !== 'undefined' && orientationHandlerRef.current) {
-      window.removeEventListener('deviceorientation', orientationHandlerRef.current, true);
-      if ('ondeviceorientationabsolute' in window) {
-        window.removeEventListener('deviceorientationabsolute', orientationHandlerRef.current, true);
-      }
-      orientationHandlerRef.current = null;
-    }
-    clearSensorTimeout();
-    setMotionEnabled(false);
-  }, [clearSensorTimeout]);
+    const pano = streetViewInstanceRef?.current;
+    pano?.setMotionTracking?.(false);
+    pano?.setMotionTrackingEnabled?.(false);
+  }, [streetViewInstanceRef]);
 
   const enableMotion = useCallback(async () => {
     if (typeof window === 'undefined' || !streetViewInstanceRef?.current) return;
-    try {
-      if (!window.isSecureContext) {
-        setMotionError('모션 센서는 HTTPS(또는 localhost) 환경에서만 동작합니다.');
-        setHasMotionCapability(false);
-        return;
-      }
-      if (typeof window.DeviceOrientationEvent === 'undefined') {
-        setMotionError('이 장치는 모션 센서를 제공하지 않습니다.');
-        setHasMotionCapability(false);
-        return;
-      }
-
-      const hasIOSPermissionAPI =
-        typeof window.DeviceOrientationEvent !== 'undefined' &&
-        typeof window.DeviceOrientationEvent.requestPermission === 'function';
-      if (hasIOSPermissionAPI) {
-        const permission = await window.DeviceOrientationEvent.requestPermission();
-        if (permission !== 'granted') {
-          setMotionError('모션 센서 접근이 거부되었습니다.');
-          return;
-        }
-      }
-
-      window.addEventListener('deviceorientation', handleOrientation, true);
-      if ('ondeviceorientationabsolute' in window) {
-        window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-      }
-
-      orientationHandlerRef.current = handleOrientation;
-      clearSensorTimeout();
-      sensorTimeoutRef.current = window.setTimeout(() => {
-        sensorTimeoutRef.current = null;
-        disableMotion();
-        setHasMotionCapability(false);
-        setMotionError('이 기기에서는 모션 센서 데이터를 받을 수 없습니다.');
-      }, 2500);
-      setMotionEnabled(true);
-      setHasMotionCapability(true);
-      setMotionError(null);
-    } catch (err) {
-      console.error('Failed to enable motion controls', err);
-      setMotionError('모션 센서를 사용할 수 없습니다.');
+    if (!window.isSecureContext) {
+      return;
     }
-  }, [clearSensorTimeout, disableMotion, handleOrientation, streetViewInstanceRef]);
+    if (typeof window.DeviceOrientationEvent === 'undefined') {
+      return;
+    }
+
+    try {
+      await requestPermission(window.DeviceOrientationEvent.requestPermission);
+      await requestPermission(window.DeviceMotionEvent?.requestPermission);
+    } catch (err) {
+      return;
+    }
+
+    const pano = streetViewInstanceRef.current;
+    pano.setMotionTracking?.(true);
+    pano.setMotionTrackingEnabled?.(true);
+    pano.setMotionTrackingControl?.(false);
+  }, [streetViewInstanceRef]);
 
   const handleClose = () => {
     disableMotion();
+    stopHeadTracking();
     setIsNoteOpen(false);
     onClose();
-  };
-
-  const openWorldView = () => {
-    const target = activePlace || streetViewInstanceRef?.current?.getPosition();
-    if (!target) return;
-    const lat = target.lat || (typeof target.lat === 'function' ? target.lat() : null);
-    const lng = target.lng || (typeof target.lng === 'function' ? target.lng() : null);
-    if (lat === null || lng === null) return;
-    router.push(`/world?lat=${lat}&lng=${lng}`);
   };
 
   useEffect(() => {
     if (!isActive) {
       disableMotion();
+      stopHeadTracking();
+      setHeadPose(null);
       setIsNoteOpen(false);
       return;
     }
-    if (typeof window !== 'undefined') {
-      const supported = typeof window.DeviceOrientationEvent !== 'undefined';
-      setHasMotionCapability(supported);
-      if (!supported) {
-        setMotionError('이 장치는 모션 센서를 제공하지 않습니다.');
-      }
-    }
-  }, [isActive, disableMotion]);
+    enableMotion();
+  }, [isActive, disableMotion, enableMotion, stopHeadTracking]);
 
   useEffect(
     () => () => {
       disableMotion();
+      stopHeadTracking();
+      setHeadPose(null);
     },
-    [disableMotion]
+    [disableMotion, stopHeadTracking]
   );
+
+  const toggleHeadTracking = () => {
+    if (headTrackingStatus === 'running' || headTrackingStatus === 'starting') {
+      stopHeadTracking();
+      setHeadPose(null);
+    } else {
+      startHeadTracking();
+    }
+  };
 
   return (
     <>
@@ -162,18 +104,20 @@ export default function Pano({
               >
                 ✕
               </button>
-              {!motionEnabled && hasMotionCapability && (
-                <button className="floating-btn floating-btn--pill motion-button" onClick={enableMotion}>
-                  모션 켜기
-                </button>
-              )}
               <button
-                className="floating-btn floating-btn--pill world-button"
-                onClick={openWorldView}
-                disabled={!activePlace}
+                className="floating-btn floating-btn--pill headtrack-button"
+                onClick={toggleHeadTracking}
+                disabled={headTrackingStatus === 'starting'}
               >
-                3D
+                {headTrackingStatus === 'running' ? '헤드 추적 끄기' : '헤드 추적'}
               </button>
+              <div className="headtrack-status-pill">
+                {headTrackingStatus === 'running'
+                  ? '헤드 추적: 활성'
+                  : headTrackingStatus === 'starting'
+                  ? '헤드 추적: 준비 중'
+                  : '헤드 추적: 꺼짐'}
+              </div>
             </div>
             <button
               className="floating-btn floating-btn--round note-button"
@@ -181,8 +125,29 @@ export default function Pano({
             >
               💬
             </button>
-            {motionError && <div className="error-banner">{motionError}</div>}
+            {headTrackingError && <div className="error-banner">{headTrackingError}</div>}
             {error && <div className="error-banner">{error}</div>}
+            {(headTrackingStatus === 'running' || headTrackingStatus === 'starting') && (
+              <div className="headtrack-visual">
+                <div className="headtrack-grid">
+                  <div className="headtrack-axis headtrack-axis-x" />
+                  <div className="headtrack-axis headtrack-axis-y" />
+                  {headPose && (
+                  <div
+                    className="headtrack-dot"
+                    style={{
+                      transform: `translate(calc(-50% + ${headPose.yaw}px), calc(-50% - ${headPose.pitch}px))`,
+                    }}
+                  />
+                  )}
+                </div>
+                <span>
+                  {headPose
+                    ? `yaw ${headPose.yaw.toFixed(1)}° / pitch ${headPose.pitch.toFixed(1)}°`
+                    : '웹캠 초기화 중...'}
+                </span>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -270,6 +235,69 @@ export default function Pano({
         }
         .error-banner + .error-banner {
           bottom: 120px;
+        }
+        .headtrack-button {
+          background: rgba(0, 0, 0, 0.4);
+        }
+        .headtrack-status-pill {
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.15);
+          font-size: 12px;
+          color: #fff;
+        }
+        .headtrack-visual {
+          position: absolute;
+          bottom: 28px;
+          right: 28px;
+          width: 160px;
+          height: 120px;
+          border-radius: 14px;
+          background: rgba(0, 0, 0, 0.55);
+          color: #fff;
+          font-size: 12px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          pointer-events: none;
+        }
+        .headtrack-grid {
+          position: relative;
+          width: 90px;
+          height: 90px;
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 999px;
+          overflow: hidden;
+        }
+        .headtrack-axis {
+          position: absolute;
+          background: rgba(255, 255, 255, 0.2);
+        }
+        .headtrack-axis-x {
+          left: 0;
+          top: 50%;
+          width: 100%;
+          height: 1px;
+        }
+        .headtrack-axis-y {
+          width: 1px;
+          height: 100%;
+          left: 50%;
+          top: 0;
+        }
+        .headtrack-dot {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          transform: translate(-50%, -50%);
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: #ffd400;
+          box-shadow: 0 0 8px rgba(255, 212, 0, 0.8);
+          transition: transform 0.08s linear;
         }
       `}</style>
     </>

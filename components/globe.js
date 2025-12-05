@@ -2,14 +2,14 @@ import { useRouter } from 'next/router';
 import { useEffect, useRef, useCallback } from 'react';
 
 export const GLOBE_SIZE = 40;
-const ROUTE_SEQUENCE = ['/main', '/list', '/map'];
+const ROUTE_SEQUENCE = ['/gravity', '/list', '/map'];
 const EDGE_PADDING = 0;
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
 
 const normalizePath = (path) => {
   if (typeof path !== 'string' || path.length === 0) return '/';
   const [clean] = path.split('?');
-  if (!clean || clean === '/') return '/list';
+  if (!clean || clean === '/') return '/gravity';
   return clean;
 };
 
@@ -20,7 +20,7 @@ export const getNextGlobeRoute = (path) => {
   return ROUTE_SEQUENCE[(idx + 1) % ROUTE_SEQUENCE.length];
 };
 
-export const shouldHideGlobe = (path) => normalizePath(path) === '/main';
+export const shouldHideGlobe = (path) => normalizePath(path) === '/gravity';
 
 export const pushNextGlobeRoute = (router) => {
   const nextRoute = getNextGlobeRoute(router.asPath);

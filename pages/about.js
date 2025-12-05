@@ -15,7 +15,7 @@ export default function About() {
           </p>
           
                       <p>
-           <span className="site-name" onClick={() => router.push('/main')}>Vanishing Points</span> is a space for encountering images of distant landscapes through the eyes of Google's Street View. It emerged from the realization that, while we each live within separate coordinates, the sun's movement—and our act of watching it—remains shared.
+           <span className="site-name" onClick={() => router.push('/gravity')}>Vanishing Points</span> is a space for encountering images of distant landscapes through the eyes of Google's Street View. It emerged from the realization that, while we each live within separate coordinates, the sun's movement—and our act of watching it—remains shared.
            Often, in those panoramic fragments, the subject is missing. There is no one in the frame—only a shadow, a glitch, a vanishing point where someone once stood. These images evoke a peculiar sense of loss and presence, as though something is watching back from behind the screen.
             </p>
 
