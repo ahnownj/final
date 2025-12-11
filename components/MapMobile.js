@@ -7,9 +7,8 @@ import { loadGoogleMaps } from '../lib/googleMaps';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
 const MAP_ZOOM_LIMITS = { min: 1, max: 18 };
 const RANDOM_OFFSET_DEGREES = 0.18;
-const DETAIL_ZOOM = 6;
+const DETAIL_ZOOM = 10;
 const OVERVIEW_ZOOM = 2;
-const ZOOM_DURATION = 4000;
 const DRIFT_INTERVAL = 180;
 const DRIFT_STEP = { x: 1, y: 1 };
 const MARKER_APPEAR_ZOOM = 6;
@@ -29,7 +28,6 @@ export default function MapMobile() {
   const streetViewServiceRef = useRef(null);
   const googleRef = useRef(null);
   const driftTimerRef = useRef(null);
-  const zoomCancelRef = useRef(null);
   const streetViewOpenRef = useRef(false);
   const markerRefs = useRef([]);
 
@@ -83,40 +81,6 @@ export default function MapMobile() {
     }
     return DEFAULT_CENTER;
   }, [router.query, pickRandomCenter]);
-
-  const animateZoom = useCallback((targetZoom, onComplete) => {
-    const map = mapInstanceRef.current;
-    if (!map || !Number.isFinite(targetZoom)) return;
-    if (zoomCancelRef.current) {
-      zoomCancelRef.current();
-      zoomCancelRef.current = null;
-    }
-    const startZoom = map.getZoom() ?? MAP_ZOOM_LIMITS.min;
-    if (Math.abs(startZoom - targetZoom) < 0.05) {
-      onComplete?.();
-      return;
-    }
-    const startTime = performance.now();
-    const duration = ZOOM_DURATION;
-    let rafId = null;
-    const step = (now) => {
-      const progress = Math.min((now - startTime) / duration, 1);
-      const ease = 1 - Math.pow(1 - progress, 2.5);
-      map.setZoom(startZoom + (targetZoom - startZoom) * ease);
-      if (progress < 1) {
-        rafId = requestAnimationFrame(step);
-      } else {
-        map.setZoom(targetZoom);
-        zoomCancelRef.current = null;
-        onComplete?.();
-      }
-    };
-    rafId = requestAnimationFrame(step);
-    zoomCancelRef.current = () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      zoomCancelRef.current = null;
-    };
-  }, []);
 
   const stopDrift = useCallback(() => {
     if (driftTimerRef.current) {
@@ -177,6 +141,8 @@ export default function MapMobile() {
     if (!router.isReady || !mapRef.current || !streetViewRef.current) return;
     let cancelled = false;
     let cleanup = () => {};
+    let blinkTimer = null;
+    let blinkOpacity = 1;
 
     loadGoogleMaps()
       .then((google) => {
@@ -189,7 +155,7 @@ export default function MapMobile() {
         const targetZoom = hasExplicitCoords || fromGlobe || saved ? DETAIL_ZOOM : OVERVIEW_ZOOM;
         const map = new google.maps.Map(mapRef.current, {
           center,
-          zoom: OVERVIEW_ZOOM,
+          zoom: targetZoom,
           mapTypeId: 'satellite',
           disableDefaultUI: true,
           minZoom: MAP_ZOOM_LIMITS.min,
@@ -218,6 +184,7 @@ export default function MapMobile() {
             fillColor: '#ffd400',
             fillOpacity: 1,
             strokeColor: '#ffd400',
+            strokeOpacity: 1,
             strokeWeight: 1,
             scale: 0.0001,
           };
@@ -227,7 +194,7 @@ export default function MapMobile() {
             icon,
             visible: false,
           });
-          marker.__icon = icon;
+          marker.__iconBase = icon;
           marker.addListener('click', () => openPlaceInStreetView(place));
           return marker;
         });
@@ -239,24 +206,34 @@ export default function MapMobile() {
             Math.min(1, (zoom - MARKER_APPEAR_ZOOM) / (MARKER_FULL_ZOOM - MARKER_APPEAR_ZOOM))
           );
           markerRefs.current.forEach((marker) => {
+            const base = marker.__iconBase;
             marker.setVisible(factor > 0);
-            marker.setIcon({ ...marker.__icon, scale: Math.max(0.6, MARKER_BASE_SCALE * factor) });
+            marker.setIcon({
+              ...base,
+              scale: Math.max(0.6, MARKER_BASE_SCALE * factor),
+              fillOpacity: (base.fillOpacity ?? 1) * blinkOpacity,
+              strokeOpacity: (base.strokeOpacity ?? 1) * blinkOpacity,
+            });
           });
         };
         updateMarkers();
         const zoomListener = map.addListener('zoom_changed', updateMarkers);
 
-        animateZoom(targetZoom, startDrift);
+        blinkTimer = window.setInterval(() => {
+          blinkOpacity = blinkOpacity === 1 ? 0 : 1;
+          updateMarkers();
+        }, 1000);
+
+        startDrift();
 
         cleanup = () => {
           zoomListener.remove();
+          if (blinkTimer) {
+            window.clearInterval(blinkTimer);
+          }
           markerRefs.current.forEach((marker) => marker.setMap(null));
           markerRefs.current = [];
           stopDrift();
-          if (zoomCancelRef.current) {
-            zoomCancelRef.current();
-            zoomCancelRef.current = null;
-          }
           mapInstanceRef.current = null;
         };
       })
@@ -271,7 +248,6 @@ export default function MapMobile() {
     router.query,
     getInitialCenter,
     validPlaces,
-    animateZoom,
     startDrift,
     stopDrift,
     openPlaceInStreetView,
@@ -311,6 +287,12 @@ export default function MapMobile() {
         .map-canvas {
           width: 100%;
           height: 100%;
+        }
+        :global(.map-canvas .gm-style-cc),
+        :global(.map-canvas .gm-style-cc *),
+        :global(.map-canvas .gmnoprint),
+        :global(.map-canvas .gmnoprint *) {
+          display: none !important;
         }
       `}</style>
     </>

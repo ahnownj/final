@@ -14,48 +14,80 @@ export default function GoogleMap({
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    let isMounted = true;
+    let blinkTimer = null;
+    let createdMarkers = [];
+
     const initMap = async () => {
       try {
+        setError(null);
+        setIsLoading(true);
+
         const apiKey = process.env.NEXT_PUBLIC_GOOGLE_KEY;
         if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
           throw new Error('Google Maps API 키가 설정되지 않았거나 기본값입니다.');
         }
 
         const google = await loadGoogleMaps();
+        if (!mapRef.current || !isMounted) return;
 
-        if (mapRef.current) {
-          const mapInstance = new google.maps.Map(mapRef.current, {
-            center,
-            zoom,
-            mapTypeControl: true,
-            streetViewControl: true,
-            fullscreenControl: true,
+        const mapInstance = new google.maps.Map(mapRef.current, {
+          center,
+          zoom,
+          mapTypeControl: true,
+          streetViewControl: true,
+          fullscreenControl: true,
+        });
+
+        createdMarkers = markers.map((marker) => {
+          const markerInstance = new google.maps.Marker({
+            position: marker.position,
+            map: mapInstance,
+            title: marker.title || '',
+            ...(marker.options || {}),
           });
+          markerInstance.__baseOpacity =
+            typeof marker.options?.opacity === 'number' ? marker.options.opacity : 1;
+          return markerInstance;
+        });
 
-          markers.forEach((marker) => {
-            new google.maps.Marker({
-              position: marker.position,
-              map: mapInstance,
-              title: marker.title || '',
-              ...(marker.options || {}),
+        if (createdMarkers.length) {
+          let dim = false;
+          blinkTimer = window.setInterval(() => {
+            dim = !dim;
+            createdMarkers.forEach((marker) => {
+              const baseOpacity = marker.__baseOpacity ?? 1;
+              marker.setOpacity(dim ? baseOpacity * 0.3 : baseOpacity);
             });
-          });
+          }, 1000);
+        }
 
-          if (onMapLoad) {
-            onMapLoad(mapInstance, google);
-          }
+        if (onMapLoad) {
+          onMapLoad(mapInstance, google);
+        }
 
+        if (isMounted) {
           setIsLoading(false);
         }
       } catch (err) {
         console.error('Google Maps 로드 오류:', err);
-        setError(err.message);
-        setIsLoading(false);
+        if (isMounted) {
+          setError(err.message);
+          setIsLoading(false);
+        }
       }
     };
 
     initMap();
-  }, [center.lat, center.lng, markers.length, onMapLoad, zoom]);
+
+    return () => {
+      isMounted = false;
+      if (blinkTimer) {
+        window.clearInterval(blinkTimer);
+      }
+      createdMarkers.forEach((marker) => marker.setMap(null));
+    };
+  }, [center.lat, center.lng, markers, onMapLoad, zoom]);
 
   if (error) {
     return (
@@ -77,7 +109,7 @@ export default function GoogleMap({
   }
 
   return (
-    <div style={{ height, width, position: 'relative' }}>
+    <div className="google-map-wrapper" style={{ height, width, position: 'relative' }}>
       {isLoading && (
         <div
           style={{
@@ -93,6 +125,7 @@ export default function GoogleMap({
       )}
       <div
         ref={mapRef}
+        className="google-map-canvas"
         style={{
           height: '100%',
           width: '100%',
@@ -100,6 +133,14 @@ export default function GoogleMap({
           transition: 'opacity 0.3s ease',
         }}
       />
+      <style jsx global>{`
+        .google-map-wrapper :global(.gm-style-cc),
+        .google-map-wrapper :global(.gm-style-cc *),
+        .google-map-wrapper :global(.gmnoprint),
+        .google-map-wrapper :global(.gmnoprint *) {
+          display: none !important;
+        }
+      `}</style>
     </div>
   );
 }

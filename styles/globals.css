@@ -18,7 +18,7 @@ body {
 
 body {
   color: var(--foreground);
-  background: var(--background);
+  background: transparent;
   font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -39,4 +39,12 @@ a {
   html {
     color-scheme: dark;
   }
+}
+
+/* Hide Google Maps attribution/branding overlays (map + street view) */
+:global(.gm-style-cc),
+:global(.gm-style-cc *),
+:global(.gmnoprint),
+:global(.gmnoprint *) {
+  display: none !important;
 }

@@ -196,8 +196,27 @@ export default function Home() {
     }));
   };
 
-  const handleMouseEnter = (item, event) => {
+  useEffect(() => {
     if (!isLoaded) return;
+    const container = document.querySelector('.thumbnail .streetview-container');
+    if (!container || streetViewInstanceRef.current) return;
+
+    streetViewInstanceRef.current = createStreetView(container);
+
+    if (streetViewInstanceRef.current) {
+      const initialTarget = data[0] || places.find(p => !isNaN(parseFloat(p.lat)) && !isNaN(parseFloat(p.lng))) || {};
+      const initialLat = parseFloat(initialTarget?.lat) || 37.5665;
+      const initialLng = parseFloat(initialTarget?.lng) || 126.9780;
+      streetViewInstanceRef.current.setOptions({
+        position: { lat: initialLat, lng: initialLng },
+        pov: { heading: 90, pitch: 15, zoom: 10 },
+        visible: false
+      });
+    }
+  }, [isLoaded, data]);
+
+  const handleMouseEnter = (item, event) => {
+    if (!isLoaded || !streetViewInstanceRef.current) return;
     setHoveredItem(item);
     
     const thumbnail = document.querySelector('.thumbnail');
@@ -205,32 +224,17 @@ export default function Home() {
       const rowRect = event.currentTarget.getBoundingClientRect();
       const thumbnailTop = Math.max(Math.min(rowRect.bottom - THUMBNAIL_HEIGHT, window.innerHeight - THUMBNAIL_HEIGHT - 20), 20);
       thumbnail.style.top = `${thumbnailTop}px`;
-      
-      // 기존 컨테이너 제거하고 새로 생성
-      const existingContainer = thumbnail.querySelector('.streetview-container');
-      if (existingContainer) existingContainer.remove();
-      
-      const newContainer = document.createElement('div');
-      newContainer.className = 'streetview-container';
-      newContainer.style.cssText = 'width: 100%; height: 100%;';
-      thumbnail.appendChild(newContainer);
-      
-      // 새 Street View 인스턴스 생성
-      streetViewInstanceRef.current = createStreetView(newContainer);
-      
-      if (streetViewInstanceRef.current) {
-        streetViewInstanceRef.current.setOptions({
-          position: { lat: parseFloat(item.lat), lng: parseFloat(item.lng) },
-          pov: { heading: 90, pitch: 15, zoom: 10 }, // 썸네일
-          visible: true
-        });
-      }
     }
+
+    streetViewInstanceRef.current.setOptions({
+      position: { lat: parseFloat(item.lat), lng: parseFloat(item.lng) },
+      pov: { heading: 90, pitch: 15, zoom: 10 },
+      visible: true
+    });
   };
 
   const handleMouseLeave = () => {
     setHoveredItem(null);
-    if (streetViewInstanceRef.current) streetViewInstanceRef.current.setVisible(false);
   };
 
   const handleRowClick = (item) => {
@@ -245,8 +249,11 @@ export default function Home() {
     setSelectedItem(item);
   };
 
-  const handleOpenMap = (item) => {
-    router.push(`/map?lat=${item.lat}&lng=${item.lng}`);
+  const handleOpenPano = (item) => {
+    router.push({
+      pathname: '/pano',
+      query: { id: item.id, lat: item.lat, lng: item.lng },
+    });
   };
 
   useEffect(() => {
@@ -269,7 +276,7 @@ export default function Home() {
       if (mainStreetViewInstanceRef.current) {
         mainStreetViewInstanceRef.current.setOptions({
           position: { lat: parseFloat(selectedItem.lat), lng: parseFloat(selectedItem.lng) },
-          pov: { heading: -90, pitch: 15, zoom: 10 },
+          pov: { heading: -90, pitch: 0, zoom: 10 },
           visible: true
         });
       }
@@ -302,27 +309,14 @@ export default function Home() {
               <p>
                   This website has been created by <a href="mailto:ahnownj@gmail.com" className="author-link">Eunjae Ahn</a> from 2025 Convergence Design III led by Jeanyoon Choi at <a href="https://www.karts.ac.kr/" target="_blank" className="university-link">Korea National University of Arts</a>.
               </p>
-              
-              <div className="about-image">
-                <Image
-                  src="/img/IMG_2788 copy.JPG"
-                  alt="Project Image"
-                  width={360}
-                  height={240}
-                  unoptimized
-                  style={{ width: '100%', height: 'auto', transform: 'scale(4)', transformOrigin: '58% 52%', filter: 'blur(4px)' }}
-                />
-              </div>
             </div>
           </div>
         </div>
         
         <div className="thumbnail-area">
-          {shouldShowThumbnail && (
-            <div className="thumbnail">
-              <div className="streetview-container" style={{ width: '100%', height: '100%' }} />
-            </div>
-          )}
+          <div className={`thumbnail ${shouldShowThumbnail ? 'show' : 'hide'}`}>
+            <div className="streetview-container" style={{ width: '100%', height: '100%' }} />
+          </div>
         </div>
         
         <div className="archive-area">
@@ -356,11 +350,11 @@ export default function Home() {
                     <div className="main-streetview-container">
                       <div 
                         className={`main-streetview main-streetview-${item.id}`}
-                        onClick={() => handleOpenMap(item)}
+                        onDoubleClick={() => handleOpenPano(item)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            handleOpenMap(item);
+                            handleOpenPano(item);
                           }
                         }}
                         role="button"
@@ -385,10 +379,29 @@ export default function Home() {
       </div>
 
       <style jsx global>{`
+        :root {
+          --vp-grad-top:rgb(0, 26, 42);
+          --vp-grad-bottom:rgb(236, 83, 0);
+        }
         * { box-sizing: border-box; }
-        body { margin: 0; padding: 0; overflow: hidden; background: #f0f0f0; color:rgb(90, 90, 90); }
+        ::selection { background: #ffd400;; color: #111; }
+        html, body {
+          margin: 0;
+          padding: 0;
+          min-height: 100vh;
+          color: #fff;
+          background: linear-gradient(
+            180deg,
+            var(--vp-grad-top) 0%,
+            var(--vp-grad-middle) var(--vp-grad-middle-stop),
+            var(--vp-grad-bottom) 100%
+          ) !important;
+          background-repeat: no-repeat;
+          background-size: cover;
+          background-attachment: fixed;
+          overflow-x: hidden;
+        }
         body::-webkit-scrollbar { display: none; }
-        html { color-scheme: light; scrollbar-width: none; }
         
         /* Google UI 요소 숨김 */
         .gm-style-cc, .gmnoprint { 
@@ -414,14 +427,13 @@ export default function Home() {
         @media (max-width: 768px) {
           body {
             overflow-y: auto;
-            background: #ffffff;
           }
         }
       `}</style>
       
       <style jsx>{`
         .container {
-          font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+          font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, sans-serif;
           font-size: 14px;
           width: 100vw;
           max-width: 100%;
@@ -440,6 +452,7 @@ export default function Home() {
             font-size: 28px;
             z-index: 1001;
             cursor: pointer;
+          color: #fff;
           }
         
         .thumbnail {
@@ -448,9 +461,15 @@ export default function Home() {
           width: ${THUMBNAIL_WIDTH}px;
           height: ${THUMBNAIL_HEIGHT}px;
           z-index: 1000;
-          background: white;
+          background: rgba(255, 255, 255, 0);
+          border: 1px solid rgba(255, 255, 255, 0);
+          backdrop-filter: blur(4px);
           overflow: hidden;
+          opacity: 0;
+          pointer-events: none;
         }
+        .thumbnail.show { opacity: 1; pointer-events: auto; }
+        .thumbnail.hide { opacity: 0; pointer-events: none; }
         
 
         
@@ -460,27 +479,29 @@ export default function Home() {
           position: relative;
           display: flex;
           flex-direction: column;
-          border: 1px solid #ededed;
+          border: 1px solid rgba(255, 255, 255, 0);
+          background: rgba(0, 0, 0, 0);
+          backdrop-filter: blur(6px);
           margin-bottom: 20px;
         }
         
         .main-streetview {
           width: 100%;
           height: 320px;
-          background: #f0f0f0;
+          background: rgba(255, 255, 255, 0);
           cursor: pointer;
         }
         
         .note-preview {
-          border-top: 1px solid #ededed;
+          border-top: 1px solid rgb(255, 255, 255);
           padding: 18px 20px;
-          background: #fff;
+          background: rgba(0, 0, 0, 0.4);
           min-height: 120px;
         }
         
         .note-preview-text {
           font-size: 14px;
-          color: #2f2f2f;
+          color: #fff;
           line-height: 1.6;
           white-space: pre-wrap;
         }
@@ -490,7 +511,7 @@ export default function Home() {
           display: flex;
           justify-content: space-between;
           font-size: 12px;
-          color: #7a7a7a;
+          color: rgba(255, 255, 255, 0.7);
           letter-spacing: 0.3px;
         }
         
@@ -498,8 +519,8 @@ export default function Home() {
         
         .header, .row {
           display: grid;
-          grid-template-columns: 14% 14% 25% 25% 14%;
-          gap: 10px;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 12px;
           padding: 8px 12px;
           min-height: 30px;
           align-items: center;
@@ -509,6 +530,12 @@ export default function Home() {
           font-size: 13px;
           text-transform: uppercase;
           letter-spacing: 0.5px;
+          position: sticky;
+          top: 0;
+          background: rgba(255, 255, 255, 0);
+          backdrop-filter: blur(8px);
+          z-index: 5;
+          border-bottom: 1px solid rgba(255, 255, 255, 0);
         }
         
         .header > div { 
@@ -529,12 +556,18 @@ export default function Home() {
         .rows::-webkit-scrollbar { display: none; }
         
         .row {
-          border-bottom: 1px solid #eee;
+          border-bottom: 1px solid rgba(255, 255, 255, 0);
           cursor: pointer;
         }
         
-        .row:hover:not(.selected) { background-color: yellow; }
-        .row.selected { background-color: white; }
+        .row:hover:not(.selected) { 
+          background-color: #ffd400; 
+          color: #111;
+        }
+        .row:hover:not(.selected) > div {
+          color: #111;
+        }
+        .row.selected { background-color: rgba(255, 255, 255, 0); }
         
         .coord {
           font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -593,18 +626,15 @@ export default function Home() {
         }
         
         .about-content {
-          width: 400px;
-          height: 100vh;
-          background: rgba(255, 255, 255, 0.1);
-          backdrop-filter: blur(8px);
-          padding: 100px 20px 20px 20px;
-          overflow-y: auto;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0);
+          backdrop-filter: blur(6px);
+          padding: 60px 6vw;
+          display: flex;
+          align-items: center;
+          justify-content: center;
           position: relative;
-          scrollbar-width: none;
-        }
-        
-        .about-content::-webkit-scrollbar {
-          display: none;
         }
         
         .about-close {
@@ -613,7 +643,7 @@ export default function Home() {
           right: 20px;
           font-size: 20px;
           cursor: pointer;
-          color: rgb(60, 60, 60);
+          color: #fff;
           transition: opacity 0.2s ease;
         }
         
@@ -623,13 +653,22 @@ export default function Home() {
         
         .about-text {
           font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-          font-size: 14px;
-          line-height: 1.6;
-          color: rgb(60, 60, 60);
+          font-size: 15px;
+          line-height: 1.7;
+          color: #fff;
+          max-width: 760px;
+          width: 100%;
+          max-height: calc(100vh - 140px);
+          overflow-y: auto;
+          padding-right: 12px;
         }
         
+        .about-text::-webkit-scrollbar { width: 4px; }
+        .about-text::-webkit-scrollbar-track { background: transparent; }
+        .about-text::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); }
+        
         .about-text p {
-          margin: 0 0 16px 0;
+          margin: 0 0 18px 0;
         }
         
         .about-text p:last-child {
@@ -637,7 +676,7 @@ export default function Home() {
         }
         
         .about-text .site-name, .about-text .university-link, .about-text .author-link {
-          color: rgb(60, 60, 60);
+          color: #fff;
           text-decoration: none;
           cursor: pointer;
           transition: opacity 0.2s ease;
@@ -647,30 +686,26 @@ export default function Home() {
           opacity: 0;
         }
         
-        .about-image {
-          margin-top: 500px;
-          width: 100%;
-          max-height: 660px;
-          overflow: hidden;
-        }
-        
         .vp-title {
           position: fixed;
           top: 12px;
           left: 20px;
           font-size: 20px;
           font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-          color: rgb(90, 90, 90);
+          color: #fff;
           z-index: 1001;
           cursor: pointer;
           transition: color 0.2s ease;
         }
         
         .vp-title:hover {
-          color: #f0f0f0;
+          color: #ffd400;
         }
         
         @media (max-width: 768px) {
+          html, body {
+            background-attachment: scroll;
+          }
           .container {
             flex-direction: column;
             padding: 70px 16px 40px;
@@ -686,7 +721,7 @@ export default function Home() {
             overflow-y: visible;
           }
           .header, .row {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(5, minmax(0, 1fr));
             gap: 8px;
           }
           .row {

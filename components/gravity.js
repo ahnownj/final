@@ -5,6 +5,55 @@ import { GLOBE_SIZE, pushNextGlobeRoute } from './globe';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
 const rand = (min, max) => min + Math.random() * (max - min);
+const LINEAR_DAMPING = 0.985;
+const ANGULAR_DAMPING = 0.965;
+const PLACEHOLDER =
+  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="%23f3f3f3"/><text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-family="Arial" font-size="14">No image</text></svg>';
+
+const createLetterCluster = (word, clusterId, color = '#ffd400', textColor = '#111') => {
+  const letters = word.toUpperCase().split('');
+  const count = letters.length;
+  const step = 30;
+  const curve = 10;
+  const size = 30;
+  const center = (count - 1) / 2;
+
+  return letters.map((ch, i) => {
+    const t = (i - center) / Math.max(count - 1, 1);
+    const offsetX = (i - center) * step + rand(-4, 4);
+    const offsetY = Math.sin(t * Math.PI) * curve + rand(-2, 2);
+    return {
+      id: `${clusterId}-${i}`,
+      type: 'word-letter',
+      label: ch,
+      size,
+      fontSize: 12,
+      textColor,
+      color,
+      clusterId,
+      clusterOffsetX: offsetX,
+      clusterOffsetY: offsetY,
+    };
+  });
+};
+const extractImageUrl = (rawUrl) => {
+  if (!rawUrl) return null;
+  try {
+    const decoded = decodeURIComponent(rawUrl);
+    const match = decoded.match(/https:\/\/lh3\.googleusercontent\.com[^"'\s]*/);
+    if (match && match[0]) return match[0];
+  } catch (e) {
+    // ignore decode errors
+  }
+  const encodedMatch = rawUrl.match(/https:%2F%2Flh3\.googleusercontent\.com[^"&\s]*/);
+  if (encodedMatch && encodedMatch[0]) return decodeURIComponent(encodedMatch[0]);
+  return null;
+};
+const extractPanoId = (rawUrl) => {
+  if (!rawUrl) return null;
+  const match = rawUrl.match(/!1s([^!]+)!/);
+  return match?.[1] || null;
+};
 const pickRandomPlaces = (count) => {
   const filtered = places.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   for (let i = filtered.length - 1; i > 0; i -= 1) {
@@ -15,21 +64,38 @@ const pickRandomPlaces = (count) => {
 };
 
 const createBodies = (nodes, metas, bounds) => {
+  const clusterBases = {};
   const bodies = [];
   nodes.forEach((node, index) => {
     if (!node) return;
     const meta = metas[index] || {};
-    const size = node.offsetWidth || meta.size || 100;
+    const width = meta.width || node.offsetWidth || meta.size || 100;
+    const height = meta.height || node.offsetHeight || meta.size || width;
+    const size = Math.max(width, height);
     const radius = size / 2;
-    const globeX = (bounds.width - size) / 2;
+    const globeX = (bounds.width - width) / 2;
     const globeY = 12;
-    let x = meta.isGlobe
-      ? clamp(globeX, 0, Math.max(bounds.width - size, 0))
-      : rand(0, Math.max(bounds.width - size, 0));
-    let y = meta.isGlobe
-      ? clamp(globeY, 0, Math.max(bounds.height - size, 0))
-      : rand(0, Math.max(bounds.height - size, 0));
-    if (!meta.isGlobe) {
+    const canRotate = !meta.isGlobe; // 글로브만 회전 금지, 나머지는 충돌/속도로 기울어짐 허용
+    let x;
+    let y;
+    if (meta.isGlobe) {
+      x = clamp(globeX, 0, Math.max(bounds.width - width, 0));
+      y = clamp(globeY, 0, Math.max(bounds.height - height, 0));
+    } else if (meta.clusterId) {
+      if (!clusterBases[meta.clusterId]) {
+        clusterBases[meta.clusterId] = {
+          x: rand(24, Math.max(bounds.width - width - 24, 24)),
+          y: rand(24, Math.max(bounds.height - height - 24, 24)),
+        };
+      }
+      const base = clusterBases[meta.clusterId];
+      x = clamp(base.x + (meta.clusterOffsetX || 0), 0, Math.max(bounds.width - width, 0));
+      y = clamp(base.y + (meta.clusterOffsetY || 0), 0, Math.max(bounds.height - height, 0));
+    } else {
+      x = rand(0, Math.max(bounds.width - width, 0));
+      y = rand(0, Math.max(bounds.height - height, 0));
+    }
+    if (!meta.isGlobe && !meta.clusterId) {
       let attempts = 0;
       while (
         attempts < 120 &&
@@ -39,12 +105,27 @@ const createBodies = (nodes, metas, bounds) => {
           return Math.hypot(dx, dy) < radius + body.radius;
         })
       ) {
-        x = rand(0, Math.max(bounds.width - size, 0));
-        y = rand(0, Math.max(bounds.height - size, 0));
+        x = rand(0, Math.max(bounds.width - width, 0));
+        y = rand(0, Math.max(bounds.height - height, 0));
         attempts += 1;
       }
     }
-    bodies.push({ node, size, radius, x, y, vx: 0, vy: 0, angle: 0 });
+    const angle = meta.isGlobe ? 0 : rand(-0.2, 0.2); // 초기 약간 기울임
+    bodies.push({
+      node,
+      width,
+      height,
+      size,
+      radius,
+      x,
+      y,
+      canRotate,
+      isGlobe: !!meta.isGlobe,
+      vx: 0,
+      vy: 0,
+      angle,
+      av: 0, // 초기 자동 회전 제거
+    });
   });
   return bodies;
 };
@@ -58,16 +139,16 @@ const applyBounds = (body, bounds) => {
   if (body.x < 0) {
     body.x = 0;
     body.vx *= -0.35;
-  } else if (body.x + body.size > bounds.width) {
-    body.x = bounds.width - body.size;
+  } else if (body.x + body.width > bounds.width) {
+    body.x = bounds.width - body.width;
     body.vx *= -0.35;
   }
 
   if (body.y < 0) {
     body.y = 0;
     body.vy *= -0.35;
-  } else if (body.y + body.size > bounds.height) {
-    body.y = bounds.height - body.size;
+  } else if (body.y + body.height > bounds.height) {
+    body.y = bounds.height - body.height;
     body.vy *= -0.35;
   }
 };
@@ -97,6 +178,16 @@ const resolveCollisions = (bodies, iterations = 4) => {
           a.vy += impulse * ny * 0.04;
           b.vx -= impulse * nx * 0.04;
           b.vy -= impulse * ny * 0.04;
+
+          // 접선 방향 상대 속도로 회전 모멘트 부여 (빙글빙글 방지용 작은 계수)
+          const tx = -ny;
+          const ty = nx;
+          const relVx = b.vx - a.vx;
+          const relVy = b.vy - a.vy;
+          const tangential = relVx * tx + relVy * ty;
+          const spin = tangential * 0.0008;
+          if (a.canRotate && !a.isGlobe) a.av += spin;
+          if (b.canRotate && !b.isGlobe) b.av -= spin;
           adjusted = true;
         }
       }
@@ -137,17 +228,40 @@ export default function GravityField({ maxItems = 30 }) {
     if (!isMounted) return;
     const count = Math.max(2, Math.min(maxItems, Math.floor(Math.random() * 29) + 2));
     const selected = pickRandomPlaces(count);
-    const placesWithThumbs = selected.map((place, idx) => ({
-      id: `${place.lat}-${place.lng}-${idx}`,
-      lat: place.lat,
-      lng: place.lng,
-      label: place.place || place.user || 'Unknown',
-      size: 80 + Math.random() * 60,
-      url: key
-        ? `https://maps.googleapis.com/maps/api/streetview?size=400x400&location=${place.lat},${place.lng}&fov=90&key=${key}`
-        : null,
-    }));
-    setItems([{ id: 'globe-home', isGlobe: true, size: GLOBE_SIZE, label: 'home' }, ...placesWithThumbs]);
+    const placesWithThumbs = selected.map((place, idx) => {
+      const panoId = extractPanoId(place.url);
+      const lh3Image = extractImageUrl(place.url);
+      const streetViewUrl =
+        key &&
+        (panoId
+          ? `https://maps.googleapis.com/maps/api/streetview?size=400x400&pano=${panoId}&fov=90&key=${key}`
+          : `https://maps.googleapis.com/maps/api/streetview?size=400x400&location=${place.lat},${place.lng}&fov=90&key=${key}`);
+      const primaryUrl = lh3Image || streetViewUrl || PLACEHOLDER;
+      const backupUrl = streetViewUrl && lh3Image ? streetViewUrl : null;
+      return {
+        id: `${place.lat}-${place.lng}-${idx}`,
+        lat: place.lat,
+        lng: place.lng,
+        label: place.place || place.user || 'Unknown',
+        size: 80 + Math.random() * 60,
+        url: primaryUrl,
+        backupUrl,
+      };
+    });
+
+    const yellow = '#ffd400';
+    const black = '#111';
+    const wordClusters = [
+      ...createLetterCluster('world', 'cluster-world', yellow, black),
+      ...createLetterCluster('without', 'cluster-without', yellow, black),
+      ...createLetterCluster('words', 'cluster-words', yellow, black),
+    ];
+
+    setItems([
+      ...wordClusters,
+      { id: 'globe-home', isGlobe: true, size: GLOBE_SIZE, label: 'home' },
+      ...placesWithThumbs,
+    ]);
     const angle = Math.random() * Math.PI * 2;
     const magnitude = 18 + Math.random() * 18;
     gravityRef.current = { x: Math.cos(angle) * magnitude, y: Math.sin(angle) * magnitude };
@@ -172,23 +286,44 @@ export default function GravityField({ maxItems = 30 }) {
 
       bodies.forEach((body, idx) => {
         if (dragState.index === idx) {
-          const nextX = clamp(dragState.targetX, 0, bounds.width - body.size);
-          const nextY = clamp(dragState.targetY, 0, bounds.height - body.size);
+          const nextX = clamp(dragState.targetX, 0, bounds.width - body.width);
+          const nextY = clamp(dragState.targetY, 0, bounds.height - body.height);
           const dx = nextX - body.x;
           const dy = nextY - body.y;
           body.x = nextX;
           body.y = nextY;
-          const dragAngle = dx === 0 && dy === 0 ? null : Math.atan2(dy, dx);
-          rotateToward(body, dragAngle, 0.5);
+          if (body.canRotate) {
+            const dragAngle = dx === 0 && dy === 0 ? body.angle : Math.atan2(dy, dx);
+            rotateToward(body, dragAngle, 0.5);
+          } else {
+            body.angle = 0;
+          }
           body.vx = dx / Math.max(dt, 0.016);
           body.vy = dy / Math.max(dt, 0.016);
+          body.av = 0; // 드래그 시 각속도 리셋
         } else {
           body.vx += gravityRef.current.x * dt;
           body.vy += gravityRef.current.y * dt;
           body.x += body.vx * dt;
           body.y += body.vy * dt;
-          rotateToward(body, 0, 0.1);
+          // 속도 감쇠로 자연스럽게 멈추도록 처리
+          body.vx *= LINEAR_DAMPING;
+          body.vy *= LINEAR_DAMPING;
+          if (body.isGlobe) {
+            body.angle = 0;
+            body.av = 0;
+          } else if (body.canRotate) {
+            const speed = Math.hypot(body.vx, body.vy);
+            const targetAngle = speed > 2 ? Math.atan2(body.vy, body.vx) : 0;
+            rotateToward(body, targetAngle, 0.06);
+          }
         }
+
+        // 각속도 감쇠 및 적용
+        body.av *= ANGULAR_DAMPING;
+        body.av = clamp(body.av, -2.5, 2.5); // 과도한 스핀 방지
+        body.angle += body.av * dt;
+
         applyBounds(body, bounds);
       });
 
@@ -214,6 +349,7 @@ export default function GravityField({ maxItems = 30 }) {
   }, [items]);
 
   const startDrag = (event, index, item) => {
+    event.preventDefault();
     const node = itemRefs.current[index];
     if (!node || !containerRef.current) return;
     const bounds = containerRef.current.getBoundingClientRect();
@@ -229,12 +365,14 @@ export default function GravityField({ maxItems = 30 }) {
       moved: false,
       activeItem: item,
     };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    window.addEventListener('pointermove', onDragMove);
-    window.addEventListener('pointerup', handlePointerUp, { once: true });
+    window.addEventListener('pointermove', onDragMove, { passive: false });
+    window.addEventListener('pointerup', handlePointerUp, { passive: false });
+    window.addEventListener('pointercancel', handlePointerUp, { passive: false });
+    window.addEventListener('pointerleave', handlePointerUp, { passive: false });
   };
 
   const onDragMove = (event) => {
+    event.preventDefault();
     const state = dragRef.current;
     if (state.index === null || !containerRef.current) return;
     const bounds = containerRef.current.getBoundingClientRect();
@@ -246,11 +384,15 @@ export default function GravityField({ maxItems = 30 }) {
     }
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (event) => {
+    event?.preventDefault();
     window.removeEventListener('pointermove', onDragMove);
+    window.removeEventListener('pointerup', handlePointerUp);
+    window.removeEventListener('pointercancel', handlePointerUp);
+    window.removeEventListener('pointerleave', handlePointerUp);
     const state = dragRef.current;
-    const shouldNavigate = !state.moved && state.activeItem;
     const item = state.activeItem;
+    const wasMoved = state.moved;
     dragRef.current = {
       index: null,
       offsetX: 0,
@@ -262,18 +404,25 @@ export default function GravityField({ maxItems = 30 }) {
       startY: 0,
       activeItem: null,
     };
-    if (shouldNavigate && item) {
+    if (!wasMoved && item) {
       if (item.isGlobe) {
         pushNextGlobeRoute(router);
-      } else {
+      } else if (item.type !== 'word') {
         router.push(`/map?lat=${item.lat}&lng=${item.lng}`);
       }
     }
   };
 
-  const handleImageError = (index) => {
-    const node = itemRefs.current[index];
-    if (node) node.style.display = 'none';
+  const handleImageError = (event, backupUrl) => {
+    const img = event?.target;
+    if (!img) return;
+    if (backupUrl && img.dataset.usedBackup !== '1') {
+      img.dataset.usedBackup = '1';
+      img.src = backupUrl;
+      return;
+    }
+    img.onerror = null;
+    img.src = PLACEHOLDER;
   };
 
   if (!isMounted) return null;
@@ -287,8 +436,14 @@ export default function GravityField({ maxItems = 30 }) {
           ref={(node) => {
             itemRefs.current[index] = node;
           }}
-          className={`gravity-card${item.isGlobe ? ' globe' : ''}`}
-          style={{ width: item.size, height: item.size }}
+          className={`gravity-card${item.isGlobe ? ' globe' : ''}${
+            item.type === 'word' ? ' word' : ''
+          }${item.type === 'word-letter' ? ' word-letter' : ''}`}
+          style={{
+            width: item.width || item.size,
+            height: item.height || item.size,
+            borderRadius: item.type === 'word' ? 0 : '50%',
+          }}
           onPointerDown={(event) => startDrag(event, index, item)}
           onDragStart={(event) => event.preventDefault()}
         >
@@ -299,12 +454,24 @@ export default function GravityField({ maxItems = 30 }) {
               className="globe-icon"
               draggable={false}
             />
+          ) : item.type === 'word-letter' ? (
+            <span
+              className="letter-label"
+              style={{
+                fontSize: item.fontSize || 12,
+                color: item.textColor || '#111',
+                backgroundColor: item.color || '#ffd400',
+              }}
+            >
+              {item.label}
+            </span>
           ) : item.url ? (
             <img
               src={item.url}
               alt={item.label || 'place thumbnail'}
               loading="lazy"
-              onError={() => handleImageError(index)}
+              onError={(e) => handleImageError(e, item.backupUrl)}
+              referrerPolicy="no-referrer"
             />
           ) : (
             <span>{item.label}</span>
@@ -323,44 +490,44 @@ export default function GravityField({ maxItems = 30 }) {
           position: absolute;
           border: none;
           padding: 0;
-          background: transparent;
           cursor: pointer;
           overflow: hidden;
           touch-action: none;
           border-radius: 50%;
+          background: transparent;
+          outline: none;
+          appearance: none;
+        }
+        .gravity-card img,
+        .letter-label {
+          width: 100%;
+          height: 100%;
+          display: block;
+          border-radius: inherit;
         }
         .gravity-card img {
-          width: 100%;
-          height: 100%;
           object-fit: cover;
-          display: block;
           user-select: none;
           -webkit-user-drag: none;
-          border-radius: inherit;
-        }
-        .gravity-card:not(.globe) span {
-          display: block;
-          width: 100%;
-          height: 100%;
-          background: #efefef;
-          color: #111;
-          font-size: 11px;
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: inherit;
         }
         .globe-icon {
-          width: 100%;
-          height: 100%;
           object-fit: contain;
-          display: block;
         }
         .gravity-card:focus-visible {
           outline: 1px solid #666;
           outline-offset: 2px;
+        }
+        .letter-label {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: #ffd400;
+          color: #111;
+          font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, sans-serif;
+          font-weight: 500;
+          letter-spacing: 0;
+          text-transform: uppercase;
+          border-radius: 50%;
         }
       `}</style>
     </div>
