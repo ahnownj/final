@@ -7,6 +7,15 @@ import { getSavedNote, NOTE_EVENT_NAME } from '../components/note';
 
 const THUMBNAIL_WIDTH = 210, THUMBNAIL_HEIGHT = 100;
 
+const extractNoteBody = (text) => {
+  if (!text || typeof text !== 'string') return '';
+  const lines = text.split('\n');
+  if (!lines.length) return '';
+  lines.shift(); // drop header line
+  while (lines.length && lines[0] === '') lines.shift(); // drop leading blanks
+  return lines.join('\n');
+};
+
 export default function Home() {
   const router = useRouter();
   const [data, setData] = useState([]);
@@ -15,6 +24,8 @@ export default function Home() {
   const [hoveredItem, setHoveredItem] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedNote, setSelectedNote] = useState(null);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const googleRef = useRef(null);
   const streetViewInstanceRef = useRef(null);
   const mainStreetViewInstanceRef = useRef(null);
@@ -47,6 +58,14 @@ export default function Home() {
       }
     };
     initGoogleMaps();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const touch =
+      'ontouchstart' in window || navigator.maxTouchPoints > 0 || navigator.msMaxTouchPoints > 0;
+    setIsTouchDevice(touch);
+    return undefined;
   }, []);
 
   useEffect(() => {
@@ -288,6 +307,23 @@ export default function Home() {
   // 썸네일 표시 조건 수정: ID로 비교
   const shouldShowThumbnail = hoveredItem && (!selectedItem || selectedItem.id !== hoveredItem.id);
 
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredData = normalizedSearch
+    ? data.filter((item) => {
+        const haystack = [
+          item.lat,
+          item.lng,
+          item.user,
+          item.place,
+          item.date,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(normalizedSearch);
+      })
+    : data;
+
   return (
     <>
       <div className="container">
@@ -320,16 +356,41 @@ export default function Home() {
         </div>
         
         <div className="archive-area">
+          <div className="search-row">
+            <div className="search-inner">
+              <input
+                className="search-input"
+                type="text"
+                placeholder="Search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault();
+                }}
+              />
+              <button
+                type="button"
+                className="search-btn"
+                aria-label="search"
+                onClick={() => setSearchTerm((v) => v.trim())}
+              >
+                🔍
+              </button>
+            </div>
+          </div>
+
           <div className="header">
             <div onClick={() => sort('lat')}>LAT {sortKey === 'lat' && (sortDir === 'asc' ? '▲' : '▼')}</div>
             <div onClick={() => sort('lng')}>LNG {sortKey === 'lng' && (sortDir === 'asc' ? '▲' : '▼')}</div>
             <div onClick={() => sort('user')}>USER {sortKey === 'user' && (sortDir === 'asc' ? '▲' : '▼')}</div>
             <div onClick={() => sort('place')}>TITLE {sortKey === 'place' && (sortDir === 'asc' ? '▲' : '▼')}</div>
-            <div onClick={() => sort('date')}>DATE {sortKey === 'date' && (sortDir === 'asc' ? '▲' : '▼')}</div>
+            <div className="date-cell header-date" onClick={() => sort('date')}>
+              DATE {sortKey === 'date' && (sortDir === 'asc' ? '▲' : '▼')}
+            </div>
           </div>
           
           <div className="rows">
-            {data.map((item) => {
+            {filteredData.map((item) => {
               const isSelected = selectedItem?.id === item.id;
               return (
                 <div key={item.id}>
@@ -343,7 +404,7 @@ export default function Home() {
                     <div className="coord">{item.lng}</div>
                     <div>{item.user}</div>
                     <div className="place">{item.place}</div>
-                    <div>{item.date}</div>
+                    <div className="date-cell">{item.date}</div>
                   </div>
                   
                   {isSelected && (
@@ -351,6 +412,7 @@ export default function Home() {
                       <div 
                         className={`main-streetview main-streetview-${item.id}`}
                         onDoubleClick={() => handleOpenPano(item)}
+                        onClick={isTouchDevice ? () => handleOpenPano(item) : undefined}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
@@ -362,7 +424,9 @@ export default function Home() {
                       ></div>
                       {selectedNote && (
                         <div className="note-preview">
-                          <div className="note-preview-text">{selectedNote.text}</div>
+                          <div className="note-preview-text">
+                            {extractNoteBody(selectedNote.text)}
+                          </div>
                           <div className="note-preview-meta">
                             <span>{selectedNote.author || '익명'}</span>
                             <span>{selectedNote.timestamp || ''}</span>
@@ -379,10 +443,7 @@ export default function Home() {
       </div>
 
       <style jsx global>{`
-        :root {
-          --vp-grad-top:rgb(0, 26, 42);
-          --vp-grad-bottom:rgb(236, 83, 0);
-        }
+        :root { --vp-bg: #000; }
         * { box-sizing: border-box; }
         ::selection { background: #ffd400;; color: #111; }
         html, body {
@@ -390,15 +451,7 @@ export default function Home() {
           padding: 0;
           min-height: 100vh;
           color: #fff;
-          background: linear-gradient(
-            180deg,
-            var(--vp-grad-top) 0%,
-            var(--vp-grad-middle) var(--vp-grad-middle-stop),
-            var(--vp-grad-bottom) 100%
-          ) !important;
-          background-repeat: no-repeat;
-          background-size: cover;
-          background-attachment: fixed;
+          background: #000 !important;
           overflow-x: hidden;
         }
         body::-webkit-scrollbar { display: none; }
@@ -434,7 +487,7 @@ export default function Home() {
       <style jsx>{`
         .container {
           font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, sans-serif;
-          font-size: 14px;
+          font-size: 12px;
           width: 100vw;
           max-width: 100%;
           padding: 100px 10px 0 10px;
@@ -492,28 +545,10 @@ export default function Home() {
           cursor: pointer;
         }
         
-        .note-preview {
-          border-top: 1px solid rgb(255, 255, 255);
-          padding: 18px 20px;
-          background: rgba(0, 0, 0, 0.4);
-          min-height: 120px;
-        }
-        
-        .note-preview-text {
-          font-size: 14px;
-          color: #fff;
-          line-height: 1.6;
-          white-space: pre-wrap;
-        }
-        
-        .note-preview-meta {
-          margin-top: 12px;
-          display: flex;
-          justify-content: space-between;
-          font-size: 12px;
-          color: rgba(255, 255, 255, 0.7);
-          letter-spacing: 0.3px;
-        }
+        .note-preview { border-top: 1px solid rgb(255, 255, 255); padding: 18px 20px; background: rgba(0, 0, 0, 0.4); min-height: 120px; }
+        .note-preview-text { font-size: 14px; color: #fff; line-height: 1.6; white-space: pre-wrap; }
+        .note-preview-meta { margin-top: 12px; display: flex; justify-content: space-between; font-size: 12px; color: rgba(255, 255, 255, 0.7); letter-spacing: 0.3px; }
+        .note-preview-meta span { color: inherit; }
         
 
         
@@ -571,9 +606,77 @@ export default function Home() {
         
         .coord {
           font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-          font-size: 14px;
+          font-size: 12px;
         }
-        
+
+        .date-cell {
+          justify-content: flex-end;
+          text-align: right;
+        }
+
+        .search-row {
+          display: flex;
+          justify-content: flex-end;
+          margin: 0 0 12px 0;
+          padding: 0 12px;
+          position: static;
+        }
+        .search-inner {
+          display: flex;
+          align-items: center;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.85);
+          width: 100%;
+          max-width: 100%;
+          gap: 8px;
+          padding-bottom: 6px;
+          box-shadow: none;
+        }
+        .search-input {
+          flex: 1;
+          background: transparent;
+          border: none;
+          color: #fff;
+          font: inherit;
+          padding: 0;
+          outline: none;
+        }
+        .search-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0;
+          width: 20px;
+          height: 20px;
+          position: relative;
+          flex-shrink: 0;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .search-btn:focus { outline: none; }
+        .search-btn::before,
+        .search-btn::after {
+          content: '';
+          position: absolute;
+          display: block;
+          pointer-events: none;
+        }
+        .search-btn::before {
+          width: 13px;
+          height: 13px;
+          border: 1.5px solid #fff;
+          border-radius: 50%;
+          top: 0;
+          left: 0;
+        }
+        .search-btn::after {
+          width: 7px;
+          height: 1.5px;
+          background: #fff;
+          transform: rotate(45deg);
+          transform-origin: left center;
+          left: 9px;
+          top: 9px;
+        }
+
         .header > div, .row > div {
           white-space: nowrap;
           overflow: hidden;
@@ -583,7 +686,7 @@ export default function Home() {
           display: flex;
           align-items: center;
         }
-        
+
         /* 선택된 행만 여러 줄 표시 */
         .row.selected > div {
           white-space: normal !important;
@@ -594,14 +697,22 @@ export default function Home() {
           align-items: flex-start !important;
         }
         
-        .row.selected {
-          min-height: auto !important;
-          align-items: flex-start !important;
-        }
-        
         @media (min-width: 800px) {
           .container { padding: 100px 10px 0 250px; }
           .thumbnail-area { width: 250px; margin-left: -250px; }
+        }
+
+        @media (min-width: 1024px) {
+          .search-row {
+            position: fixed;
+            top: 12px;
+            right: 20px;
+            left: auto;
+            width: 240px;
+            max-width: 240px;
+            padding: 0;
+          }
+          .search-inner { width: 100%; max-width: 100%; margin-left: auto; margin-right: auto; }
         }
         
         @media (max-width: 799px) {
@@ -736,6 +847,36 @@ export default function Home() {
           .note-preview {
             padding: 14px;
           }
+          .search-row {
+            justify-content: flex-start;
+            margin-bottom: 12px;
+          }
+          .search-inner {
+            width: 100%;
+          }
+          .header > div, .row > div {
+            white-space: normal;
+            overflow: visible;
+            text-overflow: unset;
+          }
+          .row.selected > div {
+            align-items: flex-start !important;
+          }
+        }
+
+        /* 선택된 행만 여러 줄 표시 (desktop 기본) */
+        .row.selected > div {
+          white-space: normal !important;
+          word-wrap: break-word !important;
+          word-break: break-word !important;
+          overflow: visible !important;
+          text-overflow: unset !important;
+          align-items: flex-start !important;
+        }
+        
+        .row.selected {
+          min-height: auto !important;
+          align-items: flex-start !important;
         }
       `}</style>
     </>

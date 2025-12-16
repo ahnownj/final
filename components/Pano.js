@@ -100,7 +100,7 @@ export default function Pano({
               className="floating-btn floating-btn--round note-button"
               onClick={() => setIsNoteOpen((prev) => !prev)}
             >
-              💬
+              +
             </button>
             {error && <div className="error-banner">{error}</div>}
           </>
@@ -154,7 +154,7 @@ export default function Pano({
           width: 36px;
           height: 36px;
           border-radius: 50%;
-          font-size: 18px;
+          font-size: 20px;
           line-height: 1;
           padding: 0;
         }

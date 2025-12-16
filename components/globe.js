@@ -221,9 +221,17 @@ export default function GlobeOverlay() {
           border: none;
           padding: 0;
           border-radius: 50%;
-          background: transparent;
+          background: none;
           cursor: grab;
           z-index: 1500;
+          outline: none;
+          box-shadow: none;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .globe-overlay:focus,
+        .globe-overlay:focus-visible {
+          outline: none;
+          box-shadow: none;
         }
         .globe-overlay:active {
           cursor: grabbing;

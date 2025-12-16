@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 
 export const NOTE_EVENT_NAME = 'vp-note-updated';
-const HEADER_NAME = 'Name';
+const HEADER_NAME = 'Write down your name here...';
 
 export const getNoteStorageKey = (placeId) => {
   if (placeId === null || placeId === undefined) return null;
@@ -41,7 +41,7 @@ const buildTimeMeta = () => {
 };
 
 const buildHeaderLine = ({ dateTimeLabel, timezoneLabel, name }) =>
-  `${name}, ${dateTimeLabel} - Currently in timezone ${timezoneLabel}.`;
+  `${name} ${dateTimeLabel} - Currently in timezone ${timezoneLabel}.`;
 
 const buildDefaultBody = () =>
   'It seems to me that I will always be happy in the place where I am not.';
@@ -68,7 +68,6 @@ export default function Note({ place, isOpen, onClose }) {
   const [body, setBody] = useState('');
   const [headerMeta, setHeaderMeta] = useState(buildTimeMeta());
   const textareaRef = useRef(null);
-  const caretPositionedRef = useRef(false);
   const storageKey = getNoteStorageKey(place?.id);
 
   useEffect(() => {
@@ -123,39 +122,30 @@ export default function Note({ place, isOpen, onClose }) {
     persistNote(body, value);
   };
 
-  useEffect(() => {
-    if (!isOpen) {
-      caretPositionedRef.current = false;
-      return;
-    }
-    if (caretPositionedRef.current || !textareaRef.current) return;
-    const timer = setTimeout(() => {
-      const el = textareaRef.current;
-      const len = el.value.length;
-      el.focus();
-      el.setSelectionRange(len, len);
-      caretPositionedRef.current = true;
-    }, 120);
-    return () => clearTimeout(timer);
-  }, [isOpen, body]);
-
   if (!isOpen || !place) return null;
 
   return (
     <div className="note-overlay" onClick={onClose}>
       <div className="note-surface" onClick={(e) => e.stopPropagation()}>
-        <div className="note-close" onClick={onClose} aria-label="close">
-          ×
-        </div>
-        <div className="note-plus">+</div>
+        <div className="note-close" onClick={onClose} aria-label="close">×</div>
         <div className="note-header">
           <input
             className="note-name-input"
             value={name}
             onChange={handleNameChange}
+            onFocus={() => {
+              if (name === HEADER_NAME) {
+                setName('');
+              }
+            }}
+            onClick={() => {
+              if (name === HEADER_NAME) {
+                setName('');
+              }
+            }}
             spellCheck={false}
           />
-          <span>, {headerMeta.dateTimeLabel} - Currently in timezone {headerMeta.timezoneLabel}.</span>
+          <span>{headerMeta.dateTimeLabel} - Currently in timezone {headerMeta.timezoneLabel}.</span>
         </div>
         <div className="note-gap" aria-hidden />
         <textarea
@@ -163,22 +153,22 @@ export default function Note({ place, isOpen, onClose }) {
           className="note-textarea"
           value={body}
           onChange={handleNoteChange}
+          onFocus={() => {
+            if (body === buildDefaultBody()) {
+              setBody('');
+            }
+          }}
+          onClick={() => {
+            if (body === buildDefaultBody()) {
+              setBody('');
+            }
+          }}
           spellCheck={false}
         />
       </div>
 
       <style jsx>{`
-        .note-overlay {
-          position: fixed;
-          inset: 0;
-          z-index: 50;
-          background: rgba(255, 255, 255, 0.32);
-          backdrop-filter: blur(18px);
-          -webkit-backdrop-filter: blur(18px);
-          display: flex;
-          align-items: stretch;
-          justify-content: center;
-        }
+        .note-overlay { position: fixed; inset: 0; z-index: 50; background: rgba(255, 255, 255, 0.32); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); display: flex; align-items: stretch; justify-content: center; }
         .note-surface {
           position: relative;
           flex: 1;
@@ -188,44 +178,13 @@ export default function Note({ place, isOpen, onClose }) {
           flex-direction: column;
           overflow: auto;
         }
-        .note-close {
-          position: absolute;
-          top: 12px;
-          right: 20px;
-          font-size: 24px;
-          cursor: pointer;
-          color: #000;
-          transition: opacity 0.2s ease;
-          line-height: 1;
-          user-select: none;
-        }
+        .note-close { position: absolute; top: 12px; right: 20px; font-size: 24px; cursor: pointer; color: #000; transition: opacity 0.2s ease; line-height: 1; user-select: none; }
         .note-close:hover {
           opacity: 0;
         }
-        .note-plus {
-          position: absolute;
-          top: 12px;
-          left: 20px;
-          font-size: 20px;
-          font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-          color: #000;
-          z-index: 1001;
-          cursor: default;
-          user-select: none;
-        }
-        .note-header {
-          font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, sans-serif;
-          font-size: clamp(32px, 4vw, 52px);
-          line-height: 1;
-          font-weight: 400;
-          color: #0f0f0f;
-          display: flex;
-          align-items: baseline;
-          gap: 6px;
-          flex-wrap: wrap;
-          overflow-wrap: anywhere;
-          max-width: 100%;
-        }
+        .note-header,
+        .note-textarea { font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, sans-serif; font-size: clamp(32px, 4vw, 52px); font-weight: 400; color: #0f0f0f; }
+        .note-header { line-height: 1; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; overflow-wrap: anywhere; max-width: 100%; }
         .note-name-input {
           border: none;
           outline: none;
@@ -243,10 +202,7 @@ export default function Note({ place, isOpen, onClose }) {
           background: #ffd400;
           color: #000;
         }
-        .note-gap {
-          height: 1.2em;
-          flex-shrink: 0;
-        }
+        .note-gap { height: 1.2em; flex-shrink: 0; }
         .note-textarea {
           width: 100%;
           height: 100%;
@@ -255,33 +211,21 @@ export default function Note({ place, isOpen, onClose }) {
           background: transparent;
           color: #0f0f0f;
           caret-color: #0f0f0f;
-          font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, sans-serif;
-          font-size: clamp(32px, 4vw, 52px);
           line-height: 1.08;
-          font-weight: 400;
           resize: none;
           white-space: pre-wrap;
           overflow: auto;
           overflow-wrap: anywhere;
           padding: 0;
         }
-        .note-textarea::-webkit-scrollbar {
-          width: 6px;
-        }
-        .note-textarea::-webkit-scrollbar-thumb {
-          background: rgba(0, 0, 0, 0.2);
-          border-radius: 999px;
-        }
+        .note-textarea::-webkit-scrollbar { width: 6px; }
+        .note-textarea::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.2); border-radius: 999px; }
         @media (max-width: 768px) {
           .note-surface {
             padding: 6vh 5vw;
           }
-          .note-header {
-            font-size: clamp(26px, 7vw, 42px);
-          }
-          .note-textarea {
-            font-size: clamp(26px, 7vw, 42px);
-          }
+          .note-header,
+          .note-textarea { font-size: clamp(26px, 7vw, 42px); }
         }
       `}</style>
     </div>

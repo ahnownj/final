@@ -8,8 +8,7 @@ const rand = (min, max) => min + Math.random() * (max - min);
 const LINEAR_DAMPING = 0.985;
 const ANGULAR_DAMPING = 0.965;
 const PLACEHOLDER =
-  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="%23f3f3f3"/><text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-family="Arial" font-size="14">No image</text></svg>';
-
+  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="%23f3f3f3"/><text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-family="Arial" font-size="24">No image</text></svg>';
 const createLetterCluster = (word, clusterId, color = '#ffd400', textColor = '#111') => {
   const letters = word.toUpperCase().split('');
   const count = letters.length;
@@ -38,16 +37,16 @@ const createLetterCluster = (word, clusterId, color = '#ffd400', textColor = '#1
 };
 const extractImageUrl = (rawUrl) => {
   if (!rawUrl) return null;
+  const variants = [rawUrl];
   try {
-    const decoded = decodeURIComponent(rawUrl);
-    const match = decoded.match(/https:\/\/lh3\.googleusercontent\.com[^"'\s]*/);
-    if (match && match[0]) return match[0];
+    variants.push(decodeURIComponent(rawUrl));
   } catch (e) {
     // ignore decode errors
   }
-  const encodedMatch = rawUrl.match(/https:%2F%2Flh3\.googleusercontent\.com[^"&\s]*/);
-  if (encodedMatch && encodedMatch[0]) return decodeURIComponent(encodedMatch[0]);
-  return null;
+  variants.push(rawUrl.replace(/%2F/gi, '/').replace(/%3A/gi, ':'));
+  const merged = variants.join(' ');
+  const match = merged.match(/https:\/\/lh[1-6]?\.googleusercontent\.com\/[^\s"'()]+/i);
+  return match?.[0] || null;
 };
 const extractPanoId = (rawUrl) => {
   if (!rawUrl) return null;
@@ -234,17 +233,20 @@ export default function GravityField({ maxItems = 30 }) {
       const streetViewUrl =
         key &&
         (panoId
-          ? `https://maps.googleapis.com/maps/api/streetview?size=400x400&pano=${panoId}&fov=90&key=${key}`
-          : `https://maps.googleapis.com/maps/api/streetview?size=400x400&location=${place.lat},${place.lng}&fov=90&key=${key}`);
-      const primaryUrl = lh3Image || streetViewUrl || PLACEHOLDER;
-      const backupUrl = streetViewUrl && lh3Image ? streetViewUrl : null;
+          ? `https://maps.googleapis.com/maps/api/streetview?size=640x640&pano=${panoId}&fov=90&pitch=15&key=${key}`
+          : `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${place.lat},${place.lng}&radius=50000&source=outdoor&fov=90&pitch=15&key=${key}`);
+
+      // 우선순위: lh3 -> StreetView(키) -> placeholder
+      const url = lh3Image || streetViewUrl || PLACEHOLDER;
+      const backupUrl = lh3Image && streetViewUrl ? streetViewUrl : streetViewUrl || PLACEHOLDER;
+
       return {
         id: `${place.lat}-${place.lng}-${idx}`,
         lat: place.lat,
         lng: place.lng,
         label: place.place || place.user || 'Unknown',
         size: 80 + Math.random() * 60,
-        url: primaryUrl,
+        url,
         backupUrl,
       };
     });
@@ -471,7 +473,6 @@ export default function GravityField({ maxItems = 30 }) {
               alt={item.label || 'place thumbnail'}
               loading="lazy"
               onError={(e) => handleImageError(e, item.backupUrl)}
-              referrerPolicy="no-referrer"
             />
           ) : (
             <span>{item.label}</span>
