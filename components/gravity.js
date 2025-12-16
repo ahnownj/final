@@ -37,16 +37,31 @@ const createLetterCluster = (word, clusterId, color = '#ffd400', textColor = '#1
 };
 const extractImageUrl = (rawUrl) => {
   if (!rawUrl) return null;
-  const variants = [rawUrl];
-  try {
-    variants.push(decodeURIComponent(rawUrl));
-  } catch (e) {
-    // ignore decode errors
+  const tryDecode = (str) => {
+    try {
+      return decodeURIComponent(str);
+    } catch (e) {
+      return str;
+    }
+  };
+
+  // 1) !6s 구간 추출 후 디코드
+  const sixMatch = rawUrl.match(/!6s([^!]+)/);
+  if (sixMatch?.[1]) {
+    const decoded = tryDecode(sixMatch[1]);
+    const lh = decoded.match(/https:\/\/lh[1-6]?\.googleusercontent\.com\/[^\s"'()]+/i);
+    if (lh?.[0]) return lh[0];
   }
-  variants.push(rawUrl.replace(/%2F/gi, '/').replace(/%3A/gi, ':'));
+
+  // 2) 전체 문자열에서 직접 lh3 패턴 찾기 (디코드/치환)
+  const variants = [
+    rawUrl,
+    tryDecode(rawUrl),
+    rawUrl.replace(/%2F/gi, '/').replace(/%3A/gi, ':'),
+  ];
   const merged = variants.join(' ');
-  const match = merged.match(/https:\/\/lh[1-6]?\.googleusercontent\.com\/[^\s"'()]+/i);
-  return match?.[0] || null;
+  const direct = merged.match(/https:\/\/lh[1-6]?\.googleusercontent\.com\/[^\s"'()]+/i);
+  return direct?.[0] || null;
 };
 const extractPanoId = (rawUrl) => {
   if (!rawUrl) return null;

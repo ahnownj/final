@@ -374,7 +374,7 @@ export default function Home() {
                 aria-label="search"
                 onClick={() => setSearchTerm((v) => v.trim())}
               >
-                🔍
+                <span className="sr-only">Search</span>
               </button>
             </div>
           </div>
@@ -649,6 +649,8 @@ export default function Home() {
           height: 20px;
           position: relative;
           flex-shrink: 0;
+          display: inline-block;
+          line-height: 1;
           -webkit-tap-highlight-color: transparent;
         }
         .search-btn:focus { outline: none; }
@@ -660,21 +662,32 @@ export default function Home() {
           pointer-events: none;
         }
         .search-btn::before {
-          width: 13px;
-          height: 13px;
-          border: 1.5px solid #fff;
+          width: 9px;
+          height: 9px;
+          border: 1px solid rgba(255, 255, 255, 0.85);
           border-radius: 50%;
-          top: 0;
-          left: 0;
+          top: 0.7px;
+          left: 0.7px;
         }
         .search-btn::after {
           width: 7px;
-          height: 1.5px;
-          background: #fff;
+          height: 1px;
+          background: rgba(255, 255, 255, 0.85);
           transform: rotate(45deg);
           transform-origin: left center;
           left: 9px;
           top: 9px;
+        }
+
+        .sr-only {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          padding: 0;
+          margin: -1px;
+          overflow: hidden;
+          clip: rect(0, 0, 0, 0);
+          border: 0;
         }
 
         .header > div, .row > div {
