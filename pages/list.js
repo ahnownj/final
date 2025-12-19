@@ -641,8 +641,10 @@ export default function Home() {
           transition: opacity 0.2s ease;
         }
         
-        .header > div:hover {
-          opacity: 0;
+        @media (hover: hover) {
+          .header > div:hover {
+            opacity: 0;
+          }
         }
         
         .rows {

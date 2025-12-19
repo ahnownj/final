@@ -63,17 +63,9 @@ const extractImageUrl = (rawUrl) => {
   const direct = merged.match(/https:\/\/lh[1-6]?\.googleusercontent\.com\/[^\s"'()]+/i);
   return direct?.[0] || null;
 };
-const extractPanoId = (rawUrl) => {
-  if (!rawUrl) return null;
-  const match = rawUrl.match(/!1s([^!]+)!/);
-  return match?.[1] || null;
-};
-
-const proxify = (url) => {
-  if (!url || typeof url !== 'string') return url;
-  if (!url.startsWith('http://') && !url.startsWith('https://')) return url;
-  return `/api/image?url=${encodeURIComponent(url)}`;
-};
+// NOTE:
+// places 데이터의 `!1s...` 값은 Street View Static API의 `pano`로 쓰기엔 맞지 않는 케이스가 많아
+// (200 응답이지만 "Sorry, we have no imagery here." 이미지가 내려오는 현상) pano 기반 호출은 사용하지 않습니다.
 const pickRandomPlaces = (count) => {
   const withCoords = places.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   // gravity에서는 "실제 썸네일"이 중요하므로 lh3(googleusercontent) 썸네일이 있는 항목을 우선 사용
@@ -252,17 +244,15 @@ export default function GravityField({ maxItems = 30 }) {
     const count = Math.max(2, Math.min(maxItems, Math.floor(Math.random() * 29) + 2));
     const selected = pickRandomPlaces(count);
     const placesWithThumbs = selected.map((place, idx) => {
-      const panoId = extractPanoId(place.url);
-      const lh3Image = proxify(extractImageUrl(place.url));
-      const streetViewPanoUrl =
-        key &&
-        panoId &&
-        `https://maps.googleapis.com/maps/api/streetview?size=640x640&pano=${panoId}&fov=90&pitch=15&return_error_code=true&key=${key}`;
+      const lh3Direct = extractImageUrl(place.url);
       const streetViewLocUrl =
         key &&
-        `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${place.lat},${place.lng}&radius=50000&source=outdoor&fov=90&pitch=15&return_error_code=true&key=${key}`;
+        `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${place.lat},${place.lng}&radius=50000&fov=90&pitch=15&key=${key}`;
 
-      const candidates = [lh3Image, streetViewPanoUrl, streetViewLocUrl].filter(Boolean);
+      // 우선순위:
+      // 1) lh3 (있으면 사용)
+      // 2) StreetView (location 기반)
+      const candidates = [lh3Direct, streetViewLocUrl].filter(Boolean);
       const url = candidates[0] || PLACEHOLDER;
       const fallbacks = candidates.slice(1);
       if (!fallbacks.includes(PLACEHOLDER)) fallbacks.push(PLACEHOLDER);

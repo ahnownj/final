@@ -52,7 +52,7 @@ const buildTimeMeta = () => {
 };
 
 const buildHeaderLine = ({ dateTimeLabel, timezoneLabel, name }) =>
-  `${name} ${dateTimeLabel} - Currently in timezone ${timezoneLabel}.`;
+  `${name} ${dateTimeLabel} Currently in timezone ${timezoneLabel}.`;
 
 const buildDefaultBody = () =>
   'It seems to me that I will always be happy in the place where I am not.';
@@ -79,6 +79,7 @@ export default function Note({ place, isOpen, onClose }) {
   const [body, setBody] = useState('');
   const [headerMeta, setHeaderMeta] = useState(buildTimeMeta());
   const [saving, setSaving] = useState(false);
+  const nameRef = useRef(null);
   const textareaRef = useRef(null);
   const saveTimerRef = useRef(null);
   const storageKey = getNoteStorageKey(place?.id);
@@ -158,6 +159,10 @@ export default function Note({ place, isOpen, onClose }) {
     const value = e.target.value;
     setName(value);
     persistNote(body, value);
+    if (nameRef.current) {
+      nameRef.current.style.height = 'auto';
+      nameRef.current.style.height = `${nameRef.current.scrollHeight}px`;
+    }
   };
 
   if (!isOpen || !place) return null;
@@ -168,18 +173,29 @@ export default function Note({ place, isOpen, onClose }) {
         <div className="note-close" onClick={onClose} aria-label="close">×</div>
         <div className="note-header">
           <div className="note-name-row">
-            <input
+            <textarea
               className="note-name-input"
+              ref={nameRef}
               value={name}
               onChange={handleNameChange}
+              rows={1}
+              wrap="soft"
               onFocus={() => {
                 if (name === HEADER_NAME) {
                   setName('');
+                  if (nameRef.current) {
+                    nameRef.current.style.height = 'auto';
+                    nameRef.current.style.height = `${nameRef.current.scrollHeight}px`;
+                  }
                 }
               }}
               onClick={() => {
                 if (name === HEADER_NAME) {
                   setName('');
+                  if (nameRef.current) {
+                    nameRef.current.style.height = 'auto';
+                    nameRef.current.style.height = `${nameRef.current.scrollHeight}px`;
+                  }
                 }
               }}
               spellCheck={false}
@@ -190,7 +206,7 @@ export default function Note({ place, isOpen, onClose }) {
               <span className="note-dot" aria-hidden />
               <span className="note-date">{headerMeta.dateTimeLabel}</span>
             </span>
-            <span className="note-rest">- Currently in timezone {headerMeta.timezoneLabel}.</span>
+            <span className="note-rest">Currently in timezone {headerMeta.timezoneLabel}.</span>
           </div>
         </div>
         <div className="note-gap" aria-hidden />
@@ -241,12 +257,17 @@ export default function Note({ place, isOpen, onClose }) {
           border: none;
           outline: none;
           background: transparent;
-          color: #ffd400;
+          color: #0f0f0f;
           font: inherit;
           padding: 0;
           margin: 0;
-          width: auto;
-          min-width: 60px;
+          width: 100%;
+          min-height: 1.1em;
+          line-height: 1.2;
+          resize: none;
+          overflow: hidden;
+          white-space: pre-wrap;
+          word-break: break-word;
         }
         .note-name-input::selection,
         .note-header span::selection,
@@ -261,7 +282,7 @@ export default function Note({ place, isOpen, onClose }) {
           border: none;
           outline: none;
           background: transparent;
-          color: #0f0f0f;
+          color: #ffd400;
           caret-color: #0f0f0f;
           line-height: 1.22;
           resize: none;
@@ -278,7 +299,8 @@ export default function Note({ place, isOpen, onClose }) {
           70% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 45, 85, 0.0); }
           100% { opacity: 0; transform: scale(0.9); box-shadow: 0 0 0 0 rgba(255, 45, 85, 0.0); }
         }
-        @media (max-width: 768px) {
+        /* Mobile narrow (e.g., 414px-class devices) */
+        @media (max-width: 430px) {
           .note-surface {
             padding: 6vh 5vw;
           }
