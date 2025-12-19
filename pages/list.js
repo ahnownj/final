@@ -4,6 +4,7 @@ import { places } from '../data/places';
 import Image from 'next/image';
 import { loadGoogleMaps } from '../lib/googleMaps';
 import { getSavedNote, NOTE_EVENT_NAME } from '../components/note';
+import { fetchNoteForPlace } from '../lib/notesApi';
 
 const THUMBNAIL_WIDTH = 210, THUMBNAIL_HEIGHT = 100;
 
@@ -14,6 +15,20 @@ const extractNoteBody = (text) => {
   lines.shift(); // drop header line
   while (lines.length && lines[0] === '') lines.shift(); // drop leading blanks
   return lines.join('\n');
+};
+
+const formatTimestamp = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  });
 };
 
 export default function Home() {
@@ -69,11 +84,37 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!selectedItem) {
+    let active = true;
+    const loadNote = async () => {
+      if (!selectedItem) {
+        setSelectedNote(null);
+        return;
+      }
+      const remote = await fetchNoteForPlace(selectedItem.id);
+      if (!active) return;
+      if (remote) {
+        setSelectedNote({
+          body: remote.body || '',
+          author: remote.author || '익명',
+          timestamp: formatTimestamp(remote.updated_at),
+        });
+        return;
+      }
+      const saved = getSavedNote(selectedItem.id);
+      if (saved) {
+        setSelectedNote({
+          body: saved.body || extractNoteBody(saved.text || ''),
+          author: saved.author || '익명',
+          timestamp: saved.timestamp || '',
+        });
+        return;
+      }
       setSelectedNote(null);
-      return;
-    }
-    setSelectedNote(getSavedNote(selectedItem.id));
+    };
+    loadNote();
+    return () => {
+      active = false;
+    };
   }, [selectedItem]);
 
   useEffect(() => {
@@ -400,11 +441,11 @@ export default function Home() {
                     onMouseLeave={handleMouseLeave} 
                     onClick={() => handleRowClick(item)}
                   >
-                    <div className="coord">{item.lat}</div>
-                    <div className="coord">{item.lng}</div>
-                    <div>{item.user}</div>
-                    <div className="place">{item.place}</div>
-                    <div className="date-cell">{item.date}</div>
+                    <div className="coord lat-cell" data-label="LAT">{item.lat}</div>
+                    <div className="coord lng-cell" data-label="LNG">{item.lng}</div>
+                    <div className="user-cell" data-label="USER">{item.user}</div>
+                    <div className="place" data-label="TITLE">{item.place}</div>
+                    <div className="date-cell" data-label="DATE">{item.date}</div>
                   </div>
                   
                   {isSelected && (
@@ -421,11 +462,20 @@ export default function Home() {
                         }}
                         role="button"
                         tabIndex={0}
-                      ></div>
+                      >
+                        {isTouchDevice && (
+                          <button
+                            type="button"
+                            className="pano-touch-overlay"
+                            aria-label="open panorama"
+                            onClick={() => handleOpenPano(item)}
+                          />
+                        )}
+                      </div>
                       {selectedNote && (
                         <div className="note-preview">
                           <div className="note-preview-text">
-                            {extractNoteBody(selectedNote.text)}
+                            {selectedNote.body || extractNoteBody(selectedNote.text || '')}
                           </div>
                           <div className="note-preview-meta">
                             <span>{selectedNote.author || '익명'}</span>
@@ -543,6 +593,17 @@ export default function Home() {
           height: 320px;
           background: rgba(255, 255, 255, 0);
           cursor: pointer;
+          position: relative;
+        }
+        .pano-touch-overlay {
+          position: absolute;
+          inset: 0;
+          border: none;
+          padding: 0;
+          margin: 0;
+          background: transparent;
+          cursor: pointer;
+          z-index: 2;
         }
         
         .note-preview { border-top: 1px solid rgb(255, 255, 255); padding: 18px 20px; background: rgba(0, 0, 0, 0.4); min-height: 120px; }
@@ -554,11 +615,12 @@ export default function Home() {
         
         .header, .row {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 12px;
+          grid-template-columns: minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.05fr) minmax(0, 1.2fr) minmax(0, 0.95fr);
+          gap: 8px;
           padding: 8px 12px;
           min-height: 30px;
           align-items: center;
+          width: 100%;
         }
         
         .header {
@@ -605,13 +667,14 @@ export default function Home() {
         .row.selected { background-color: rgba(255, 255, 255, 0); }
         
         .coord {
-          font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+          font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, 'Pretendard', 'Noto Sans', sans-serif;
           font-size: 12px;
         }
 
         .date-cell {
           justify-content: flex-end;
           text-align: right;
+          min-width: 72px;
         }
 
         .search-row {
@@ -693,22 +756,18 @@ export default function Home() {
         .header > div, .row > div {
           white-space: nowrap;
           overflow: hidden;
-          text-overflow: ellipsis;
           min-width: 0;
           line-height: 1.4;
           display: flex;
           align-items: center;
+          width: 100%;
+          max-width: 100%;
+          flex-shrink: 1;
         }
-
-        /* 선택된 행만 여러 줄 표시 */
-        .row.selected > div {
-          white-space: normal !important;
-          word-wrap: break-word !important;
-          word-break: break-word !important;
-          overflow: visible !important;
-          text-overflow: unset !important;
-          align-items: flex-start !important;
-        }
+        .lat-cell, .lng-cell { max-width: 100%; }
+        .user-cell { max-width: 100%; }
+        .place { max-width: 100%; }
+        .date-cell { max-width: 100%; }
         
         @media (min-width: 800px) {
           .container { padding: 100px 10px 0 250px; }
@@ -776,7 +835,7 @@ export default function Home() {
         }
         
         .about-text {
-          font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+          font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, 'Pretendard', 'Noto Sans', sans-serif;
           font-size: 15px;
           line-height: 1.7;
           color: #fff;
@@ -810,12 +869,45 @@ export default function Home() {
           opacity: 0;
         }
         
+        /* 모바일 초소형 해상도(≤430px)에서도 한 줄 유지 */
+        @media (max-width: 430px) {
+          .header, .row {
+            grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 0.85fr);
+            gap: 6px;
+          }
+          .header {
+            font-size: 11px;
+          }
+          .row {
+            padding: 10px 10px;
+          }
+          .row > div {
+            white-space: nowrap;
+            overflow: hidden;
+            line-height: 1.35;
+            font-size: 11px;
+          }
+          .lat-cell, .lng-cell,
+          .user-cell,
+          .place,
+          .date-cell { max-width: 100%; }
+          .coord {
+            font-size: 11px;
+          }
+          .place {
+            line-height: 1.35;
+          }
+          .row > div::before {
+            content: none;
+          }
+        }
+        
         .vp-title {
           position: fixed;
           top: 12px;
           left: 20px;
           font-size: 20px;
-          font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+          font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, 'Pretendard', 'Noto Sans', sans-serif;
           color: #fff;
           z-index: 1001;
           cursor: pointer;
@@ -844,13 +936,6 @@ export default function Home() {
             max-height: none;
             overflow-y: visible;
           }
-          .header, .row {
-            grid-template-columns: repeat(5, minmax(0, 1fr));
-            gap: 8px;
-          }
-          .row {
-            padding: 12px 10px;
-          }
           .main-streetview-container {
             height: auto;
           }
@@ -867,29 +952,11 @@ export default function Home() {
           .search-inner {
             width: 100%;
           }
-          .header > div, .row > div {
-            white-space: normal;
-            overflow: visible;
-            text-overflow: unset;
-          }
-          .row.selected > div {
-            align-items: flex-start !important;
-          }
         }
 
-        /* 선택된 행만 여러 줄 표시 (desktop 기본) */
-        .row.selected > div {
-          white-space: normal !important;
-          word-wrap: break-word !important;
-          word-break: break-word !important;
-          overflow: visible !important;
-          text-overflow: unset !important;
-          align-items: flex-start !important;
-        }
-        
         .row.selected {
           min-height: auto !important;
-          align-items: flex-start !important;
+          align-items: center !important;
         }
       `}</style>
     </>

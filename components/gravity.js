@@ -68,13 +68,22 @@ const extractPanoId = (rawUrl) => {
   const match = rawUrl.match(/!1s([^!]+)!/);
   return match?.[1] || null;
 };
+
+const proxify = (url) => {
+  if (!url || typeof url !== 'string') return url;
+  if (!url.startsWith('http://') && !url.startsWith('https://')) return url;
+  return `/api/image?url=${encodeURIComponent(url)}`;
+};
 const pickRandomPlaces = (count) => {
-  const filtered = places.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
-  for (let i = filtered.length - 1; i > 0; i -= 1) {
+  const withCoords = places.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  // gravity에서는 "실제 썸네일"이 중요하므로 lh3(googleusercontent) 썸네일이 있는 항목을 우선 사용
+  const withThumb = withCoords.filter((p) => !!extractImageUrl(p.url));
+  const pool = withThumb.length >= count ? withThumb : withCoords;
+  for (let i = pool.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
-    [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+    [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  return filtered.slice(0, count);
+  return pool.slice(0, count);
 };
 
 const createBodies = (nodes, metas, bounds) => {
@@ -244,16 +253,19 @@ export default function GravityField({ maxItems = 30 }) {
     const selected = pickRandomPlaces(count);
     const placesWithThumbs = selected.map((place, idx) => {
       const panoId = extractPanoId(place.url);
-      const lh3Image = extractImageUrl(place.url);
-      const streetViewUrl =
+      const lh3Image = proxify(extractImageUrl(place.url));
+      const streetViewPanoUrl =
         key &&
-        (panoId
-          ? `https://maps.googleapis.com/maps/api/streetview?size=640x640&pano=${panoId}&fov=90&pitch=15&key=${key}`
-          : `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${place.lat},${place.lng}&radius=50000&source=outdoor&fov=90&pitch=15&key=${key}`);
+        panoId &&
+        `https://maps.googleapis.com/maps/api/streetview?size=640x640&pano=${panoId}&fov=90&pitch=15&return_error_code=true&key=${key}`;
+      const streetViewLocUrl =
+        key &&
+        `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${place.lat},${place.lng}&radius=50000&source=outdoor&fov=90&pitch=15&return_error_code=true&key=${key}`;
 
-      // 우선순위: lh3 -> StreetView(키) -> placeholder
-      const url = lh3Image || streetViewUrl || PLACEHOLDER;
-      const backupUrl = lh3Image && streetViewUrl ? streetViewUrl : streetViewUrl || PLACEHOLDER;
+      const candidates = [lh3Image, streetViewPanoUrl, streetViewLocUrl].filter(Boolean);
+      const url = candidates[0] || PLACEHOLDER;
+      const fallbacks = candidates.slice(1);
+      if (!fallbacks.includes(PLACEHOLDER)) fallbacks.push(PLACEHOLDER);
 
       return {
         id: `${place.lat}-${place.lng}-${idx}`,
@@ -262,7 +274,7 @@ export default function GravityField({ maxItems = 30 }) {
         label: place.place || place.user || 'Unknown',
         size: 80 + Math.random() * 60,
         url,
-        backupUrl,
+        fallbacks,
       };
     });
 
@@ -430,12 +442,13 @@ export default function GravityField({ maxItems = 30 }) {
     }
   };
 
-  const handleImageError = (event, backupUrl) => {
+  const handleImageError = (event, fallbacks = []) => {
     const img = event?.target;
     if (!img) return;
-    if (backupUrl && img.dataset.usedBackup !== '1') {
-      img.dataset.usedBackup = '1';
-      img.src = backupUrl;
+    const index = Number(img.dataset.fbIndex || 0);
+    if (index < fallbacks.length) {
+      img.dataset.fbIndex = index + 1;
+      img.src = fallbacks[index];
       return;
     }
     img.onerror = null;
@@ -487,7 +500,7 @@ export default function GravityField({ maxItems = 30 }) {
               src={item.url}
               alt={item.label || 'place thumbnail'}
               loading="lazy"
-              onError={(e) => handleImageError(e, item.backupUrl)}
+              onError={(e) => handleImageError(e, item.fallbacks)}
             />
           ) : (
             <span>{item.label}</span>

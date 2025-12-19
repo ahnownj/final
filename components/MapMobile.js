@@ -92,10 +92,10 @@ export default function MapMobile() {
   const startDrift = useCallback(() => {
     stopDrift();
     if (!mapInstanceRef.current) return;
+
     driftTimerRef.current = window.setInterval(() => {
-      if (!streetViewOpenRef.current) {
-        mapInstanceRef.current?.panBy(DRIFT_STEP.x, DRIFT_STEP.y);
-      }
+      if (streetViewOpenRef.current || !mapInstanceRef.current) return;
+      mapInstanceRef.current?.panBy(DRIFT_STEP.x, DRIFT_STEP.y);
     }, DRIFT_INTERVAL);
   }, [stopDrift]);
 
@@ -141,7 +141,7 @@ export default function MapMobile() {
     if (!router.isReady || !mapRef.current || !streetViewRef.current) return;
     let cancelled = false;
     let cleanup = () => {};
-    let blinkTimer = null;
+    let blinkFrame = null;
     let blinkOpacity = 1;
 
     loadGoogleMaps()
@@ -219,17 +219,22 @@ export default function MapMobile() {
         updateMarkers();
         const zoomListener = map.addListener('zoom_changed', updateMarkers);
 
-        blinkTimer = window.setInterval(() => {
-          blinkOpacity = blinkOpacity === 1 ? 0 : 1;
+        const BLINK_PERIOD = 2400;
+        const animateBlink = (timestamp) => {
+          const progress = ((timestamp % BLINK_PERIOD) / BLINK_PERIOD) || 0;
+          // Cosine curve gives a smooth ease-in/ease-out for opacity
+          blinkOpacity = 0.5 - 0.5 * Math.cos(progress * Math.PI * 2);
           updateMarkers();
-        }, 1000);
+          blinkFrame = window.requestAnimationFrame(animateBlink);
+        };
+        blinkFrame = window.requestAnimationFrame(animateBlink);
 
         startDrift();
 
         cleanup = () => {
           zoomListener.remove();
-          if (blinkTimer) {
-            window.clearInterval(blinkTimer);
+          if (blinkFrame) {
+            window.cancelAnimationFrame(blinkFrame);
           }
           markerRefs.current.forEach((marker) => marker.setMap(null));
           markerRefs.current = [];

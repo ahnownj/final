@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { fetchNoteForPlace, saveNoteForPlace } from '../lib/notesApi';
 
 export const NOTE_EVENT_NAME = 'vp-note-updated';
 const HEADER_NAME = 'Write down your name here...';
@@ -14,7 +15,17 @@ export const getSavedNote = (placeId) => {
   if (!key) return null;
   try {
     const raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed) return null;
+    if (parsed.body) return parsed;
+    if (parsed.text) {
+      return {
+        body: extractBodyFromSaved(parsed.text),
+        author: parsed.author,
+        timestamp: parsed.timestamp,
+      };
+    }
+    return parsed;
   } catch (err) {
     console.warn('메모 데이터를 불러오지 못했습니다.', err);
     return null;
@@ -51,7 +62,7 @@ const extractBodyFromSaved = (savedText) => {
   const lines = savedText.split('\n');
   if (lines.length === 0) return '';
   lines.shift(); // remove header
-  while (lines[0] === '') lines.shift(); // remove leading blanks
+  while (lines.length && lines[0] === '') lines.shift(); // remove leading blanks
   return lines.join('\n');
 };
 
@@ -67,21 +78,37 @@ export default function Note({ place, isOpen, onClose }) {
   const [name, setName] = useState(HEADER_NAME);
   const [body, setBody] = useState('');
   const [headerMeta, setHeaderMeta] = useState(buildTimeMeta());
+  const [saving, setSaving] = useState(false);
   const textareaRef = useRef(null);
+  const saveTimerRef = useRef(null);
   const storageKey = getNoteStorageKey(place?.id);
 
   useEffect(() => {
-    if (!place) return;
-    const saved = getSavedNote(place.id);
-    if (saved && typeof saved.text === 'string') {
-      const parsedBody = extractBodyFromSaved(saved.text);
-      const parsedName = extractNameFromSaved(saved.text, saved.author);
-      setName(parsedName || HEADER_NAME);
-      setBody(parsedBody || buildDefaultBody());
-      return;
-    }
-    setName(HEADER_NAME);
-    setBody(buildDefaultBody());
+    let active = true;
+    const load = async () => {
+      if (!place) return;
+      const remote = await fetchNoteForPlace(place.id);
+      if (!active) return;
+      if (remote) {
+        setName(remote.author || HEADER_NAME);
+        setBody(remote.body || '');
+        return;
+      }
+      const saved = getSavedNote(place.id);
+      if (saved) {
+        const parsedName = saved.author || extractNameFromSaved(saved.text, saved.author);
+        const parsedBody = saved.body || extractBodyFromSaved(saved.text || '');
+        setName(parsedName || HEADER_NAME);
+        setBody(parsedBody || buildDefaultBody());
+        return;
+      }
+      setName(HEADER_NAME);
+      setBody(buildDefaultBody());
+    };
+    load();
+    return () => {
+      active = false;
+    };
   }, [storageKey, place]);
 
   useEffect(() => {
@@ -93,15 +120,26 @@ export default function Note({ place, isOpen, onClose }) {
 
   const persistNote = (bodyValue, nameValue) => {
     if (!storageKey || typeof window === 'undefined' || !place) return null;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     const safeName = (nameValue || HEADER_NAME).trim() || HEADER_NAME;
     const meta = buildTimeMeta();
     const headerLine = buildHeaderLine({ ...meta, name: safeName });
     const data = {
       text: `${headerLine}\n\n${bodyValue}`,
+      body: bodyValue,
       author: safeName,
       timestamp: `${meta.dateTimeLabel} (${meta.timezoneLabel})`,
     };
     localStorage.setItem(storageKey, JSON.stringify(data));
+    saveTimerRef.current = setTimeout(async () => {
+      setSaving(true);
+      await saveNoteForPlace({
+        placeId: place.id,
+        author: safeName,
+        body: bodyValue,
+      });
+      setSaving(false);
+    }, 350);
     window.dispatchEvent(
       new CustomEvent(NOTE_EVENT_NAME, {
         detail: { placeId: place.id, data },
@@ -129,23 +167,31 @@ export default function Note({ place, isOpen, onClose }) {
       <div className="note-surface" onClick={(e) => e.stopPropagation()}>
         <div className="note-close" onClick={onClose} aria-label="close">×</div>
         <div className="note-header">
-          <input
-            className="note-name-input"
-            value={name}
-            onChange={handleNameChange}
-            onFocus={() => {
-              if (name === HEADER_NAME) {
-                setName('');
-              }
-            }}
-            onClick={() => {
-              if (name === HEADER_NAME) {
-                setName('');
-              }
-            }}
-            spellCheck={false}
-          />
-          <span>{headerMeta.dateTimeLabel} - Currently in timezone {headerMeta.timezoneLabel}.</span>
+          <div className="note-name-row">
+            <input
+              className="note-name-input"
+              value={name}
+              onChange={handleNameChange}
+              onFocus={() => {
+                if (name === HEADER_NAME) {
+                  setName('');
+                }
+              }}
+              onClick={() => {
+                if (name === HEADER_NAME) {
+                  setName('');
+                }
+              }}
+              spellCheck={false}
+            />
+          </div>
+          <div className="note-time-row">
+            <span className="note-date-wrap">
+              <span className="note-dot" aria-hidden />
+              <span className="note-date">{headerMeta.dateTimeLabel}</span>
+            </span>
+            <span className="note-rest">- Currently in timezone {headerMeta.timezoneLabel}.</span>
+          </div>
         </div>
         <div className="note-gap" aria-hidden />
         <textarea
@@ -183,8 +229,14 @@ export default function Note({ place, isOpen, onClose }) {
           opacity: 0;
         }
         .note-header,
-        .note-textarea { font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, sans-serif; font-size: clamp(32px, 4vw, 52px); font-weight: 400; color: #0f0f0f; }
-        .note-header { line-height: 1; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; overflow-wrap: anywhere; max-width: 100%; }
+        .note-textarea { font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 30px; font-weight: 400; color: #0f0f0f; }
+        .note-header { line-height: 1.2; display: flex; flex-direction: column; gap: 12px; max-width: 100%; }
+        .note-name-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; line-height: 1.2; }
+        .note-time-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2em; line-height: 1.2; white-space: normal; word-break: normal; max-width: 100%; }
+        .note-date-wrap { display: inline-flex; align-items: center; gap: 0.2em; white-space: nowrap; vertical-align: middle; }
+        .note-date { line-height: 1.2; }
+        .note-rest { line-height: 1.2; white-space: normal; word-break: break-word; }
+        .note-dot { width: 0.34em; height: 0.34em; border-radius: 50%; background: #ff2d55; display: inline-block; flex-shrink: 0; animation: note-dot-blink 2.2s linear infinite; vertical-align: middle; margin-right: 0.14em; position: relative; top: 1pt; }
         .note-name-input {
           border: none;
           outline: none;
@@ -211,7 +263,7 @@ export default function Note({ place, isOpen, onClose }) {
           background: transparent;
           color: #0f0f0f;
           caret-color: #0f0f0f;
-          line-height: 1.08;
+          line-height: 1.22;
           resize: none;
           white-space: pre-wrap;
           overflow: auto;
@@ -220,12 +272,18 @@ export default function Note({ place, isOpen, onClose }) {
         }
         .note-textarea::-webkit-scrollbar { width: 6px; }
         .note-textarea::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.2); border-radius: 999px; }
+        @keyframes note-dot-blink {
+          0% { opacity: 0; transform: scale(0.9); }
+          40% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 6px rgba(255, 45, 85, 0.0); }
+          70% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 45, 85, 0.0); }
+          100% { opacity: 0; transform: scale(0.9); box-shadow: 0 0 0 0 rgba(255, 45, 85, 0.0); }
+        }
         @media (max-width: 768px) {
           .note-surface {
             padding: 6vh 5vw;
           }
           .note-header,
-          .note-textarea { font-size: clamp(26px, 7vw, 42px); }
+          .note-textarea { font-size: 28px; line-height: 1.22; }
         }
       `}</style>
     </div>

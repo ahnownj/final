@@ -24,7 +24,7 @@ const Name = styled.span`
   left: 0;
   font-weight: 400;
   letter-spacing: 0.5px;
-  font-family: 'Open Sans', sans-serif;
+  font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, 'Pretendard', 'Noto Sans', sans-serif;
   text-decoration: none;
   cursor: pointer;
   transition: opacity 0.3s ease;
@@ -41,7 +41,7 @@ const Email = styled.a`
   right: 0;
   font-weight: 400;
   letter-spacing: 0.5px;
-  font-family: 'Open Sans', sans-serif;
+  font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, 'Pretendard', 'Noto Sans', sans-serif;
   text-decoration: none;
   cursor: pointer;
   transition: opacity 0.3s ease;
