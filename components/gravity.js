@@ -247,7 +247,8 @@ export default function GravityField({ maxItems = 30 }) {
       const lh3Direct = extractImageUrl(place.url);
       const streetViewLocUrl =
         key &&
-        `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${place.lat},${place.lng}&radius=50000&fov=90&pitch=15&key=${key}`;
+        // pitch: 음수로 약간 아래(-10도) 시점을 바라보게 조정
+        `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${place.lat},${place.lng}&radius=50000&fov=90&pitch=-45&key=${key}`;
 
       // 우선순위:
       // 1) lh3 (있으면 사용)
@@ -526,8 +527,17 @@ export default function GravityField({ maxItems = 30 }) {
         }
         .gravity-card img {
           object-fit: cover;
+          transform: scale(1);
+          transform-origin: center;
+          transition: transform 1.0s ease;
           user-select: none;
           -webkit-user-drag: none;
+        }
+        .gravity-card:not(.globe):hover img {
+          transform: scale(8);
+        }
+        .gravity-card.globe img {
+          transform: scale(1);
         }
         .globe-icon {
           object-fit: contain;
