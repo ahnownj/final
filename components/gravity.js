@@ -469,7 +469,7 @@ export default function GravityField({ maxItems = 30 }) {
         >
           {item.isGlobe ? (
             <img
-              src="/globe.svg"
+              src="/Globe.jpg"
               alt="home globe"
               className="globe-icon"
               draggable={false}

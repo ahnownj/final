@@ -14,7 +14,7 @@ export default function About() {
 
         <p>
           <span className="site-name" onClick={() => router.push('/gravity')}>
-            Vanishing Points
+            WorldWithoutWords
           </span>{' '}
           is a space for encountering images of distant landscapes through the eyes of Google&apos;s
           Street View. It emerged from the realization that, while we each live within separate
@@ -26,7 +26,7 @@ export default function About() {
 
         <p>
           The project is a temporary meditation on memory, absence, and the illusion of proximity.
-          The globe, once known to us through paper maps and childhood globes, appears again in
+          The Earth, once known to us through paper maps and childhood globes, appears again in
           digital form—distorted, flattened, yet strangely emotional. By wandering through these
           virtual thresholds, we not only glimpse other landscapes, but perhaps also reconnect with
           someone, somewhere, who once watched the same sun.

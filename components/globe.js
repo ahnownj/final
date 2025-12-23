@@ -1,10 +1,11 @@
 import { useRouter } from 'next/router';
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 
-export const GLOBE_SIZE = 40;
+export const GLOBE_SIZE = 28;
 const ROUTE_SEQUENCE = ['/gravity', '/list', '/map'];
 const EDGE_PADDING = 0;
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
+const EMOJI_FRAMES = ['🌍', '🌏', '🌎'];
 
 const normalizePath = (path) => {
   if (typeof path !== 'string' || path.length === 0) return '/';
@@ -51,6 +52,7 @@ export default function GlobeOverlay() {
   const ballRef = useRef(null);
   const rafRef = useRef(null);
   const driftRef = useRef(randomDrift());
+  const [emojiIndex, setEmojiIndex] = useState(0);
   const stateRef = useRef({
     x: 0,
     y: 0,
@@ -69,6 +71,13 @@ export default function GlobeOverlay() {
   useEffect(() => {
     driftRef.current = randomDrift();
   }, [router.asPath]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setEmojiIndex((prev) => (prev + 1) % EMOJI_FRAMES.length);
+    }, 2000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (shouldHideGlobe(router.asPath)) return undefined;
@@ -209,7 +218,10 @@ export default function GlobeOverlay() {
         aria-label="Navigate with globe"
         onPointerDown={handlePointerDown}
       >
-        <img src="/globe.svg" alt="Globe" draggable={false} />
+        <span className="globe-emoji" aria-hidden>
+          {EMOJI_FRAMES[emojiIndex]}
+        </span>
+        <span className="sr-only">Globe navigation</span>
       </button>
       <style jsx>{`
         .globe-overlay {
@@ -223,7 +235,7 @@ export default function GlobeOverlay() {
           border-radius: 50%;
           background: none;
           cursor: grab;
-          z-index: 1500;
+          z-index: 2100;
           outline: none;
           box-shadow: none;
           -webkit-tap-highlight-color: transparent;
@@ -236,12 +248,25 @@ export default function GlobeOverlay() {
         .globe-overlay:active {
           cursor: grabbing;
         }
-        .globe-overlay img {
+        .globe-overlay .globe-emoji {
           width: 100%;
           height: 100%;
           display: block;
-          object-fit: contain;
+          font-size: ${GLOBE_SIZE - 2}px;
+          line-height: ${GLOBE_SIZE}px;
+          text-align: center;
           pointer-events: none;
+        }
+        .sr-only {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          padding: 0;
+          margin: -1px;
+          overflow: hidden;
+          clip: rect(0, 0, 0, 0);
+          white-space: nowrap;
+          border: 0;
         }
       `}</style>
     </>

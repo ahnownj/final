@@ -3,6 +3,7 @@ import { createGlobalStyle, ThemeProvider } from 'styled-components';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import GlobeOverlay from '@/components/globe';
+import AboutOverlay from '@/components/AboutOverlay';
 
 const GlobalStyle = createGlobalStyle`
   body {
@@ -46,6 +47,7 @@ export default function App({ Component, pageProps }) {
     <ThemeProvider theme={theme}>
       <GlobalStyle />
       <GlobeOverlay key={router.asPath} />
+      <AboutOverlay />
       <Component {...pageProps} />
     </ThemeProvider>
   );
