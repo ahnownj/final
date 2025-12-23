@@ -386,6 +386,13 @@ export default function MapMobile() {
         :global(.map-canvas .gmnoprint *) {
           display: none !important;
         }
+        :global(.map-canvas img[alt='Google']),
+        :global(.map-canvas a[aria-label='Google']),
+        :global(.map-canvas a[href*='//maps.google.com/maps']) {
+          display: none !important;
+          opacity: 0 !important;
+          visibility: hidden !important;
+        }
       `}</style>
     </>
   );

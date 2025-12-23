@@ -196,6 +196,13 @@ export default function Pano({
         :global(.streetview-canvas .gmnoprint *) {
           display: none !important;
         }
+        :global(.streetview-canvas img[alt='Google']),
+        :global(.streetview-canvas a[aria-label='Google']),
+        :global(.streetview-canvas a[href*='//maps.google.com/maps']) {
+          display: none !important;
+          opacity: 0 !important;
+          visibility: hidden !important;
+        }
       `}</style>
     </>
   );

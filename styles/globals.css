@@ -61,6 +61,12 @@ a {
 :global(.gm-style-cc),
 :global(.gm-style-cc *),
 :global(.gmnoprint),
-:global(.gmnoprint *) {
+:global(.gmnoprint *),
+:global(.widget-scene-copyright),
+:global(.widget-scene-copyright *),
+:global(.gm-style .copyright-notice),
+:global(.gm-style img[alt='Google']),
+:global(.gm-style a[aria-label='Google']),
+:global(.gm-style a[href*='//maps.google.com/maps']) {
   display: none !important;
 }
