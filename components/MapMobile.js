@@ -9,8 +9,9 @@ const MAP_ZOOM_LIMITS = { min: 1, max: 18 };
 const RANDOM_OFFSET_DEGREES = 0.18;
 const DETAIL_ZOOM = 10;
 const OVERVIEW_ZOOM = 2;
-const DRIFT_INTERVAL = 180;
-const DRIFT_STEP = { x: 1, y: 1 };
+// 드리프트를 초당 픽셀 속도로 부드럽게 이동
+const DRIFT_SPEED_PX_PER_SEC = 8; // 조금 더 천천히
+const DRIFT_IDLE_DELAY = 6000; // 사용자 상호작용 후 드리프트 재개까지 대기
 const MARKER_APPEAR_ZOOM = 6;
 const MARKER_FULL_ZOOM = 12;
 const MARKER_BASE_SCALE = 4;
@@ -27,9 +28,15 @@ export default function MapMobile() {
   const streetViewInstanceRef = useRef(null);
   const streetViewServiceRef = useRef(null);
   const googleRef = useRef(null);
-  const driftTimerRef = useRef(null);
+  const driftRafRef = useRef(null);
+  const driftAccumRef = useRef({ x: 0, y: 0 });
+  const driftLastTsRef = useRef(0);
+  const driftResumeTimerRef = useRef(null);
   const streetViewOpenRef = useRef(false);
   const markerRefs = useRef([]);
+  const blinkOpacityRef = useRef(1);
+  const lastZoomRef = useRef(null);
+  const lastBlinkRef = useRef(1);
 
   const [activePlace, setActivePlace] = useState(null);
   const [isStreetViewActive, setIsStreetViewActive] = useState(false);
@@ -83,21 +90,65 @@ export default function MapMobile() {
   }, [router.query, pickRandomCenter]);
 
   const stopDrift = useCallback(() => {
-    if (driftTimerRef.current) {
-      clearInterval(driftTimerRef.current);
-      driftTimerRef.current = null;
+    if (driftRafRef.current) {
+      cancelAnimationFrame(driftRafRef.current);
+      driftRafRef.current = null;
+    }
+    driftLastTsRef.current = 0;
+    driftAccumRef.current = { x: 0, y: 0 };
+    if (driftResumeTimerRef.current) {
+      clearTimeout(driftResumeTimerRef.current);
+      driftResumeTimerRef.current = null;
     }
   }, []);
 
   const startDrift = useCallback(() => {
     stopDrift();
-    if (!mapInstanceRef.current) return;
+    if (!mapInstanceRef.current || streetViewOpenRef.current) return;
 
-    driftTimerRef.current = window.setInterval(() => {
-      if (streetViewOpenRef.current || !mapInstanceRef.current) return;
-      mapInstanceRef.current?.panBy(DRIFT_STEP.x, DRIFT_STEP.y);
-    }, DRIFT_INTERVAL);
+    const loop = (ts) => {
+      if (streetViewOpenRef.current || !mapInstanceRef.current) {
+        driftRafRef.current = null;
+        return;
+      }
+      if (!driftLastTsRef.current) {
+        driftLastTsRef.current = ts;
+        driftRafRef.current = requestAnimationFrame(loop);
+        return;
+      }
+
+      const dt = Math.max(0, ts - driftLastTsRef.current) / 1000; // seconds
+      driftLastTsRef.current = ts;
+
+      // 누적 이동량을 소수로 쌓고, 1px 이상일 때만 panBy
+      const delta = DRIFT_SPEED_PX_PER_SEC * dt;
+      driftAccumRef.current.x += delta;
+      driftAccumRef.current.y += delta;
+
+      const moveX = Math.trunc(driftAccumRef.current.x);
+      const moveY = Math.trunc(driftAccumRef.current.y);
+      if (moveX !== 0 || moveY !== 0) {
+        driftAccumRef.current.x -= moveX;
+        driftAccumRef.current.y -= moveY;
+        mapInstanceRef.current?.panBy(moveX, moveY);
+      }
+
+      driftRafRef.current = requestAnimationFrame(loop);
+    };
+
+    driftRafRef.current = requestAnimationFrame(loop);
   }, [stopDrift]);
+
+  const handleUserInteraction = useCallback(() => {
+    stopDrift();
+    if (driftResumeTimerRef.current) {
+      clearTimeout(driftResumeTimerRef.current);
+    }
+    driftResumeTimerRef.current = window.setTimeout(() => {
+      driftResumeTimerRef.current = null;
+      startDrift();
+    }, DRIFT_IDLE_DELAY);
+  }, [startDrift, stopDrift]);
 
   const openPlaceInStreetView = useCallback(
     (place) => {
@@ -141,8 +192,8 @@ export default function MapMobile() {
     if (!router.isReady || !mapRef.current || !streetViewRef.current) return;
     let cancelled = false;
     let cleanup = () => {};
-    let blinkFrame = null;
-    let blinkOpacity = 1;
+    let blinkTimer = null;
+    let zoomUpdateFrame = null;
 
     loadGoogleMaps()
       .then((google) => {
@@ -153,6 +204,8 @@ export default function MapMobile() {
         const fromGlobe = router.query.source === 'globe';
         const saved = typeof window !== 'undefined' && localStorage.getItem('mapLastCenter');
         const targetZoom = hasExplicitCoords || fromGlobe || saved ? DETAIL_ZOOM : OVERVIEW_ZOOM;
+        const getVisibilityFactor = (zoomValue) =>
+          Math.max(0, Math.min(1, (zoomValue - MARKER_APPEAR_ZOOM) / (MARKER_FULL_ZOOM - MARKER_APPEAR_ZOOM)));
         const map = new google.maps.Map(mapRef.current, {
           center,
           zoom: targetZoom,
@@ -186,55 +239,89 @@ export default function MapMobile() {
             strokeColor: '#ffd400',
             strokeOpacity: 1,
             strokeWeight: 1,
-            scale: 0.0001,
+            scale: Math.max(0.6, MARKER_BASE_SCALE * getVisibilityFactor(targetZoom)),
           };
           const marker = new google.maps.Marker({
             position: { lat: place.lat, lng: place.lng },
             map,
             icon,
-            visible: false,
+            visible: getVisibilityFactor(targetZoom) > 0,
           });
           marker.__iconBase = icon;
+          marker.__lastScale = icon.scale;
+          marker.__lastOpacity = 1;
+          marker.setOpacity(blinkOpacityRef.current);
           marker.addListener('click', () => openPlaceInStreetView(place));
           return marker;
         });
 
-        const updateMarkers = () => {
+        const updateMarkers = ({ force = false } = {}) => {
           const zoom = map.getZoom() ?? OVERVIEW_ZOOM;
-          const factor = Math.max(
-            0,
-            Math.min(1, (zoom - MARKER_APPEAR_ZOOM) / (MARKER_FULL_ZOOM - MARKER_APPEAR_ZOOM))
-          );
+          const factor = getVisibilityFactor(zoom);
+          const shouldShow = factor > 0;
+          const scale = Math.max(0.6, MARKER_BASE_SCALE * factor);
+          const blinkOpacity = blinkOpacityRef.current;
+          const zoomChanged = lastZoomRef.current !== zoom;
+          const blinkChanged = lastBlinkRef.current !== blinkOpacity;
+
+          if (!force && !zoomChanged && !blinkChanged) return;
+
+          lastZoomRef.current = zoom;
+          lastBlinkRef.current = blinkOpacity;
+
           markerRefs.current.forEach((marker) => {
-            const base = marker.__iconBase;
-            marker.setVisible(factor > 0);
-            marker.setIcon({
-              ...base,
-              scale: Math.max(0.6, MARKER_BASE_SCALE * factor),
-              fillOpacity: (base.fillOpacity ?? 1) * blinkOpacity,
-              strokeOpacity: (base.strokeOpacity ?? 1) * blinkOpacity,
-            });
+            if (!shouldShow) {
+              if (marker.getVisible()) marker.setVisible(false);
+              return;
+            }
+
+            if (!marker.getVisible()) marker.setVisible(true);
+
+            if (marker.__lastScale !== scale) {
+              marker.__lastScale = scale;
+              marker.setIcon({ ...marker.__iconBase, scale });
+            }
+
+            if (marker.__lastOpacity !== blinkOpacity) {
+              marker.__lastOpacity = blinkOpacity;
+              marker.setOpacity(blinkOpacity);
+            }
           });
         };
-        updateMarkers();
-        const zoomListener = map.addListener('zoom_changed', updateMarkers);
+        lastZoomRef.current = targetZoom;
+        lastBlinkRef.current = blinkOpacityRef.current;
+        updateMarkers({ force: true });
+
+        const zoomListener = map.addListener('zoom_changed', () => {
+          if (zoomUpdateFrame) return;
+          zoomUpdateFrame = window.requestAnimationFrame(() => {
+            zoomUpdateFrame = null;
+            updateMarkers({ force: true });
+          });
+          handleUserInteraction();
+        });
+        const dragListener = map.addListener('dragstart', handleUserInteraction);
+        const clickListener = map.addListener('click', handleUserInteraction);
 
         const BLINK_PERIOD = 2400;
-        const animateBlink = (timestamp) => {
-          const progress = ((timestamp % BLINK_PERIOD) / BLINK_PERIOD) || 0;
-          // Cosine curve gives a smooth ease-in/ease-out for opacity
-          blinkOpacity = 0.5 - 0.5 * Math.cos(progress * Math.PI * 2);
+        const BLINK_INTERVAL = 240;
+        blinkTimer = window.setInterval(() => {
+          const progress = (Date.now() % BLINK_PERIOD) / BLINK_PERIOD;
+          blinkOpacityRef.current = 0.55 + 0.45 * Math.sin(progress * Math.PI * 2);
           updateMarkers();
-          blinkFrame = window.requestAnimationFrame(animateBlink);
-        };
-        blinkFrame = window.requestAnimationFrame(animateBlink);
+        }, BLINK_INTERVAL);
 
         startDrift();
 
         cleanup = () => {
           zoomListener.remove();
-          if (blinkFrame) {
-            window.cancelAnimationFrame(blinkFrame);
+          dragListener.remove();
+          clickListener.remove();
+          if (zoomUpdateFrame) {
+            window.cancelAnimationFrame(zoomUpdateFrame);
+          }
+          if (blinkTimer) {
+            window.clearInterval(blinkTimer);
           }
           markerRefs.current.forEach((marker) => marker.setMap(null));
           markerRefs.current = [];

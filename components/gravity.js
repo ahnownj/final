@@ -5,8 +5,11 @@ import { GLOBE_SIZE, pushNextGlobeRoute } from './globe';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
 const rand = (min, max) => min + Math.random() * (max - min);
+const MAX_ITEMS = 18;
 const LINEAR_DAMPING = 0.985;
 const ANGULAR_DAMPING = 0.965;
+const COLLISION_ITERATIONS = 2;
+const HOVER_SCALE = 3;
 const PLACEHOLDER =
   'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="%23f3f3f3"/><text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" fill="%23999" font-family="Arial" font-size="24">No image</text></svg>';
 const createLetterCluster = (word, clusterId, color = '#ffd400', textColor = '#111') => {
@@ -213,7 +216,7 @@ const resolveCollisions = (bodies, iterations = 4) => {
 
 const renderBodies = (bodies) => {
   bodies.forEach((body) => {
-    body.node.style.transform = `translate(${body.x}px, ${body.y}px) rotate(${body.angle}rad)`;
+    body.node.style.transform = `translate3d(${body.x}px, ${body.y}px, 0) rotate(${body.angle}rad)`;
   });
 };
 
@@ -241,7 +244,8 @@ export default function GravityField({ maxItems = 30 }) {
 
   useEffect(() => {
     if (!isMounted) return;
-    const count = Math.max(2, Math.min(maxItems, Math.floor(Math.random() * 29) + 2));
+    const desiredCount = Math.min(MAX_ITEMS, maxItems);
+    const count = Math.max(2, Math.min(desiredCount, Math.floor(Math.random() * 29) + 2));
     const selected = pickRandomPlaces(count);
     const placesWithThumbs = selected.map((place, idx) => {
       const lh3Direct = extractImageUrl(place.url);
@@ -291,6 +295,11 @@ export default function GravityField({ maxItems = 30 }) {
     const container = containerRef.current;
     const nodes = itemRefs.current.slice(0, items.length);
     if (!container || nodes.length === 0) return undefined;
+
+    const reduceMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     let bounds = container.getBoundingClientRect();
     const bodies = createBodies(nodes, items, bounds);
@@ -347,24 +356,48 @@ export default function GravityField({ maxItems = 30 }) {
         applyBounds(body, bounds);
       });
 
-      resolveCollisions(bodies);
+      resolveCollisions(bodies, COLLISION_ITERATIONS);
       renderBodies(bodies);
       raf = requestAnimationFrame(step);
     };
 
     const handleResize = () => {
       bounds = container.getBoundingClientRect();
+      bodies.forEach((body) => applyBounds(body, bounds));
+      renderBodies(bodies);
     };
 
-    raf = requestAnimationFrame((time) => {
-      last = time;
-      step(time);
-    });
+    const startLoop = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame((time) => {
+        last = time;
+        step(time);
+      });
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        if (raf) cancelAnimationFrame(raf);
+        raf = null;
+        return;
+      }
+      last = performance.now();
+      startLoop();
+    };
+
+    if (!reduceMotion) {
+      startLoop();
+      document.addEventListener('visibilitychange', handleVisibility);
+    }
+
     window.addEventListener('resize', handleResize);
 
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', handleResize);
+      if (!reduceMotion) {
+        document.removeEventListener('visibilitychange', handleVisibility);
+      }
     };
   }, [items]);
 
@@ -474,6 +507,7 @@ export default function GravityField({ maxItems = 30 }) {
               alt="home globe"
               className="globe-icon"
               draggable={false}
+              decoding="async"
             />
           ) : item.type === 'word-letter' ? (
             <span
@@ -491,6 +525,7 @@ export default function GravityField({ maxItems = 30 }) {
               src={item.url}
               alt={item.label || 'place thumbnail'}
               loading="lazy"
+              decoding="async"
               onError={(e) => handleImageError(e, item.fallbacks)}
             />
           ) : (
@@ -517,6 +552,8 @@ export default function GravityField({ maxItems = 30 }) {
           background: transparent;
           outline: none;
           appearance: none;
+          will-change: transform;
+          transform: translateZ(0);
         }
         .gravity-card img,
         .letter-label {
@@ -529,12 +566,12 @@ export default function GravityField({ maxItems = 30 }) {
           object-fit: cover;
           transform: scale(1);
           transform-origin: center;
-          transition: transform 1.0s ease;
+          transition: transform 0.45s ease;
           user-select: none;
           -webkit-user-drag: none;
         }
         .gravity-card:not(.globe):hover img {
-          transform: scale(8);
+          transform: scale(${HOVER_SCALE});
         }
         .gravity-card.globe img {
           transform: scale(1);

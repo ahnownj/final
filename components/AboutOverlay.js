@@ -141,6 +141,13 @@ export default function AboutOverlay() {
         .vp-title:hover {
           color: #ffd400;
         }
+
+        /* About 텍스트 선택 시 노란 하이라이트를 모든 페이지에서 공통 적용 */
+        :global(.about-text::selection),
+        :global(.about-text *::selection) {
+          background: #ffd400;
+          color: #111;
+        }
       `}</style>
     </>
   );

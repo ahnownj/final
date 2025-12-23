@@ -40,7 +40,7 @@ export const pushNextGlobeRoute = (router) => {
 
 const randomDrift = () => {
   const angle = Math.random() * Math.PI * 2;
-  const magnitude = 18 + Math.random() * 18;
+  const magnitude = 12 + Math.random() * 10;
   return {
     x: Math.cos(angle) * magnitude,
     y: Math.sin(angle) * magnitude,
@@ -84,12 +84,19 @@ export default function GlobeOverlay() {
     const node = ballRef.current;
     if (!node) return undefined;
 
+    const reduceMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     const state = stateRef.current;
     state.x = window.innerWidth / 2 - GLOBE_SIZE / 2;
     state.y = EDGE_PADDING;
     state.vx = 0;
     state.vy = 0;
     state.last = 0;
+
+    node.style.transform = `translate(${state.x}px, ${state.y}px)`;
 
     const animate = (time) => {
       if (!state.last) state.last = time;
@@ -138,12 +145,33 @@ export default function GlobeOverlay() {
       }
     };
 
-    rafRef.current = requestAnimationFrame(animate);
+    const startLoop = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(animate);
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+        return;
+      }
+      startLoop();
+    };
+
+    if (!reduceMotion) {
+      startLoop();
+      document.addEventListener('visibilitychange', handleVisibility);
+    }
+
     window.addEventListener('resize', handleResize);
 
     return () => {
       cancelAnimationFrame(rafRef.current);
       window.removeEventListener('resize', handleResize);
+      if (!reduceMotion) {
+        document.removeEventListener('visibilitychange', handleVisibility);
+      }
     };
   }, [router.asPath]);
 
