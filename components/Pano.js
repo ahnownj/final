@@ -20,6 +20,7 @@ export default function Pano({
   const motionGrantedRef = useRef(false);
   const lastMotionRequestRef = useRef(0);
   const pendingGestureListenerRef = useRef(false);
+  const pendingRequestRef = useRef(false);
 
   const disableMotion = useCallback(() => {
     const pano = streetViewInstanceRef?.current;
@@ -28,7 +29,11 @@ export default function Pano({
   }, [streetViewInstanceRef]);
 
   const enableMotion = useCallback(async ({ forceRequest = false } = {}) => {
-    if (typeof window === 'undefined' || !streetViewInstanceRef?.current) return;
+    if (typeof window === 'undefined') return false;
+    if (!streetViewInstanceRef?.current) {
+      pendingRequestRef.current = true;
+      return false;
+    }
     if (!window.isSecureContext) {
       return false;
     }
@@ -83,6 +88,14 @@ export default function Pano({
     }
     enableMotion({ forceRequest: true });
   }, [isActive, disableMotion, enableMotion]);
+
+  useEffect(() => {
+    if (!isActive || !streetViewInstanceRef?.current) return;
+    if (pendingRequestRef.current && !motionGrantedRef.current) {
+      pendingRequestRef.current = false;
+      enableMotion({ forceRequest: true });
+    }
+  }, [isActive, enableMotion, streetViewInstanceRef]);
 
   useEffect(() => {
     if (pendingGestureListenerRef.current) return undefined;
