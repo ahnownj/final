@@ -18,7 +18,7 @@ export default function Pano({
 }) {
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const motionGrantedRef = useRef(false);
-  const motionRequestedRef = useRef(false);
+  const lastMotionRequestRef = useRef(0);
 
   const disableMotion = useCallback(() => {
     const pano = streetViewInstanceRef?.current;
@@ -61,8 +61,10 @@ export default function Pano({
     return true;
   }, [streetViewInstanceRef]);
   const requestMotionWithGesture = useCallback(() => {
-    if (motionGrantedRef.current || motionRequestedRef.current) return;
-    motionRequestedRef.current = true;
+    if (motionGrantedRef.current) return;
+    const now = Date.now();
+    if (now - lastMotionRequestRef.current < 800) return; // 최소 간격
+    lastMotionRequestRef.current = now;
     enableMotion({ forceRequest: true });
   }, [enableMotion]);
 
@@ -78,7 +80,6 @@ export default function Pano({
       setIsNoteOpen(false);
       return;
     }
-    motionRequestedRef.current = true;
     enableMotion({ forceRequest: true });
   }, [isActive, disableMotion, enableMotion]);
 
