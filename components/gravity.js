@@ -29,7 +29,7 @@ const createLetterCluster = (word, clusterId, color = '#ffd400', textColor = '#1
       type: 'word-letter',
       label: ch,
       size,
-      fontSize: 12,
+      fontSize: 11,
       textColor,
       color,
       clusterId,
@@ -460,7 +460,13 @@ export default function GravityField({ maxItems = 30 }) {
     if (!wasMoved && item) {
       if (item.isGlobe) {
         pushNextGlobeRoute(router);
-      } else if (item.type !== 'word') {
+        return;
+      }
+
+      // 노란색 WORLD WITHOUT WORDS 글자들은 클릭 시 라우팅하지 않음
+      if (item.type === 'word-letter') return;
+
+      if (item.type !== 'word' && Number.isFinite(item.lat) && Number.isFinite(item.lng)) {
         router.push(`/map?lat=${item.lat}&lng=${item.lng}`);
       }
     }

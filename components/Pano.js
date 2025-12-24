@@ -17,9 +17,9 @@ export default function Pano({
   activePlace,
 }) {
   const [isNoteOpen, setIsNoteOpen] = useState(false);
-  const [needsMotionPrompt, setNeedsMotionPrompt] = useState(false);
   const [motionError, setMotionError] = useState(null);
   const motionGrantedRef = useRef(false);
+  const motionRequestedRef = useRef(false);
 
   const disableMotion = useCallback(() => {
     const pano = streetViewInstanceRef?.current;
@@ -42,7 +42,6 @@ export default function Pano({
       typeof window.DeviceOrientationEvent?.requestPermission === 'function' ||
       typeof window.DeviceMotionEvent?.requestPermission === 'function';
     if (requiresUserGesture && !forceRequest && !motionGrantedRef.current) {
-      setNeedsMotionPrompt(true);
       return false;
     }
 
@@ -55,7 +54,6 @@ export default function Pano({
       }
     } catch (err) {
       setMotionError('모션 접근 권한을 허용해야 스트리트뷰를 돌려볼 수 있습니다.');
-      setNeedsMotionPrompt(true);
       return false;
     }
 
@@ -64,18 +62,17 @@ export default function Pano({
     pano.setMotionTrackingEnabled?.(true);
     pano.setMotionTrackingControl?.(false);
     motionGrantedRef.current = true;
-    setNeedsMotionPrompt(false);
     setMotionError(null);
     return true;
   }, [streetViewInstanceRef]);
-
-  const handleRequestMotion = async () => {
-    await enableMotion({ forceRequest: true });
-  };
+  const requestMotionWithGesture = useCallback(() => {
+    if (motionGrantedRef.current || motionRequestedRef.current) return;
+    motionRequestedRef.current = true;
+    enableMotion({ forceRequest: true });
+  }, [enableMotion]);
 
   const handleClose = () => {
     disableMotion();
-    setNeedsMotionPrompt(false);
     setMotionError(null);
     setIsNoteOpen(false);
     onClose();
@@ -84,13 +81,24 @@ export default function Pano({
   useEffect(() => {
     if (!isActive) {
       disableMotion();
-      setNeedsMotionPrompt(false);
       setMotionError(null);
       setIsNoteOpen(false);
       return;
     }
-    enableMotion();
+    motionRequestedRef.current = true;
+    enableMotion({ forceRequest: true });
   }, [isActive, disableMotion, enableMotion]);
+
+  useEffect(() => {
+    if (!isActive) return undefined;
+    const handler = () => requestMotionWithGesture();
+    window.addEventListener('touchstart', handler, { once: true });
+    window.addEventListener('click', handler, { once: true });
+    return () => {
+      window.removeEventListener('touchstart', handler);
+      window.removeEventListener('click', handler);
+    };
+  }, [isActive, requestMotionWithGesture]);
 
   useEffect(
     () => () => {
@@ -133,11 +141,6 @@ export default function Pano({
             >
               +
             </button>
-            {needsMotionPrompt && (
-              <button className="floating-btn floating-btn--pill motion-button" onClick={handleRequestMotion}>
-                모션 허용
-              </button>
-            )}
             {error && <div className="error-banner">{error}</div>}
             {motionError && !error && <div className="error-banner">{motionError}</div>}
           </>
@@ -219,22 +222,6 @@ export default function Pano({
         }
         .note-button:hover {
           color: #ffd400;
-        }
-        .motion-button {
-          position: absolute;
-          bottom: 16px;
-          left: 12px;
-          background: rgba(0, 0, 0, 0.7);
-          color: #fff;
-          border: 1px solid #fff;
-          border-radius: 999px;
-          padding: 8px 14px;
-          font-size: 13px;
-          letter-spacing: 0.04em;
-        }
-        .motion-button:hover {
-          color: #ffd400;
-          border-color: #ffd400;
         }
         .error-banner {
           position: absolute;
