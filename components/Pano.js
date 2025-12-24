@@ -19,6 +19,7 @@ export default function Pano({
   const [isNoteOpen, setIsNoteOpen] = useState(false);
   const motionGrantedRef = useRef(false);
   const lastMotionRequestRef = useRef(0);
+  const pendingGestureListenerRef = useRef(false);
 
   const disableMotion = useCallback(() => {
     const pano = streetViewInstanceRef?.current;
@@ -84,15 +85,18 @@ export default function Pano({
   }, [isActive, disableMotion, enableMotion]);
 
   useEffect(() => {
-    if (!isActive) return undefined;
+    if (pendingGestureListenerRef.current) return undefined;
+    pendingGestureListenerRef.current = true;
     const handler = () => requestMotionWithGesture();
-    window.addEventListener('touchstart', handler, { once: true });
-    window.addEventListener('click', handler, { once: true });
+    window.addEventListener('pointerdown', handler);
+    window.addEventListener('touchstart', handler);
+    window.addEventListener('click', handler);
     return () => {
+      window.removeEventListener('pointerdown', handler);
       window.removeEventListener('touchstart', handler);
       window.removeEventListener('click', handler);
     };
-  }, [isActive, requestMotionWithGesture]);
+  }, [requestMotionWithGesture]);
 
   useEffect(
     () => () => {
