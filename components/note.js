@@ -240,7 +240,22 @@ export default function Note({ place, isOpen, onClose }) {
           flex-direction: column;
           overflow: auto;
         }
-        .note-close { position: absolute; top: 12px; right: 20px; font-size: 24px; cursor: pointer; color: #000; transition: opacity 0.2s ease; line-height: 1; user-select: none; }
+        .note-close {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          width: 36px;
+          height: 36px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 20px;
+          line-height: 1;
+          cursor: pointer;
+          color: #000;
+          transition: opacity 0.2s ease;
+          user-select: none;
+        }
         .note-close:hover {
           opacity: 0;
         }

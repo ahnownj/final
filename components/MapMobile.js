@@ -11,7 +11,6 @@ const DETAIL_ZOOM = 10;
 const OVERVIEW_ZOOM = 2;
 // 드리프트를 초당 픽셀 속도로 부드럽게 이동
 const DRIFT_SPEED_PX_PER_SEC = 8; // 조금 더 천천히
-const DRIFT_IDLE_DELAY = 6000; // 사용자 상호작용 후 드리프트 재개까지 대기
 const MARKER_APPEAR_ZOOM = 6;
 const MARKER_FULL_ZOOM = 12;
 const MARKER_BASE_SCALE = 4;
@@ -139,17 +138,6 @@ export default function MapMobile() {
     driftRafRef.current = requestAnimationFrame(loop);
   }, [stopDrift]);
 
-  const handleUserInteraction = useCallback(() => {
-    stopDrift();
-    if (driftResumeTimerRef.current) {
-      clearTimeout(driftResumeTimerRef.current);
-    }
-    driftResumeTimerRef.current = window.setTimeout(() => {
-      driftResumeTimerRef.current = null;
-      startDrift();
-    }, DRIFT_IDLE_DELAY);
-  }, [startDrift, stopDrift]);
-
   const openPlaceInStreetView = useCallback(
     (place) => {
       if (
@@ -169,14 +157,26 @@ export default function MapMobile() {
           streetViewInstanceRef.current.setPov({ heading: 0, pitch: 0, zoom: 1 });
           streetViewInstanceRef.current.setVisible(true);
           setIsStreetViewActive(true);
+          router.replace(
+            {
+              pathname: router.pathname,
+              query: { ...router.query, pano: '1' },
+            },
+            undefined,
+            { shallow: true }
+          );
         } else {
           setError('해당 위치의 스트리트뷰 이미지를 찾을 수 없습니다.');
           streetViewInstanceRef.current.setVisible(false);
           setIsStreetViewActive(false);
+          if (router.query.pano) {
+            const { pano, ...rest } = router.query;
+            router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
+          }
         }
       });
     },
-    []
+    [router]
   );
 
   useEffect(() => {
@@ -211,10 +211,11 @@ export default function MapMobile() {
           zoom: targetZoom,
           mapTypeId: 'satellite',
           disableDefaultUI: true,
-          minZoom: MAP_ZOOM_LIMITS.min,
-          maxZoom: MAP_ZOOM_LIMITS.max,
+          minZoom: targetZoom,
+          maxZoom: targetZoom,
           draggable: true,
-          scrollwheel: true,
+          scrollwheel: false,
+          disableDoubleClickZoom: true,
           gestureHandling: 'greedy',
         });
         mapInstanceRef.current = map;
@@ -292,17 +293,6 @@ export default function MapMobile() {
         lastBlinkRef.current = blinkOpacityRef.current;
         updateMarkers({ force: true });
 
-        const zoomListener = map.addListener('zoom_changed', () => {
-          if (zoomUpdateFrame) return;
-          zoomUpdateFrame = window.requestAnimationFrame(() => {
-            zoomUpdateFrame = null;
-            updateMarkers({ force: true });
-          });
-          handleUserInteraction();
-        });
-        const dragListener = map.addListener('dragstart', handleUserInteraction);
-        const clickListener = map.addListener('click', handleUserInteraction);
-
         const BLINK_PERIOD = 2400;
         const BLINK_INTERVAL = 240;
         blinkTimer = window.setInterval(() => {
@@ -314,9 +304,6 @@ export default function MapMobile() {
         startDrift();
 
         cleanup = () => {
-          zoomListener.remove();
-          dragListener.remove();
-          clickListener.remove();
           if (zoomUpdateFrame) {
             window.cancelAnimationFrame(zoomUpdateFrame);
           }
@@ -351,6 +338,10 @@ export default function MapMobile() {
     setError(null);
     if (streetViewInstanceRef.current) {
       streetViewInstanceRef.current.setVisible(false);
+    }
+    if (router.query.pano) {
+      const { pano, ...rest } = router.query;
+      router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
     }
   };
 

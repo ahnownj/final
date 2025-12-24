@@ -9,7 +9,11 @@ export default function AboutOverlay() {
     setShowAbout(false);
   }, [router.asPath]);
 
-  if (router.pathname === '/pano') return null;
+  const allowedPaths = ['/map', '/list', '/main', '/gravity'];
+  const isMapPanoView = router.pathname === '/map' && router.query?.pano === '1';
+  const showAboutButton = allowedPaths.includes(router.pathname) && !isMapPanoView;
+
+  if (!showAboutButton) return null;
 
   const handleSiteNameClick = () => {
     setShowAbout(false);

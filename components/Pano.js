@@ -81,8 +81,8 @@ export default function Pano({
                 aria-label="Close Street View"
               >
               <svg
-                width="18"
-                height="18"
+                width="16"
+                height="16"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -129,7 +129,7 @@ export default function Pano({
         .streetview-ui {
           position: absolute;
           top: 12px;
-          left: 12px;
+          left: 9px;
           display: flex;
           gap: 8px;
           z-index: 25;
@@ -151,12 +151,17 @@ export default function Pano({
           border-radius: 999px;
         }
         .floating-btn--round {
-          width: 36px;
-          height: 36px;
+          width: 35px;
+          height: 35px;
           border-radius: 50%;
           font-size: 20px;
           line-height: 1;
           padding: 0;
+        }
+        .close-button {
+          width: 35px;
+          height: 35px;
+          font-size: 20px;
         }
         .floating-btn:disabled {
           opacity: 0.5;
@@ -168,11 +173,15 @@ export default function Pano({
           right: 12px;
           border: none;
           padding: 8px 12px;
-          font-size: 18px;
+          font-size: 21px;
           color: #fff;
           cursor: pointer;
           z-index: 25;
           background: transparent;
+          transition: color 0.2s ease;
+        }
+        .note-button:hover {
+          color: #ffd400;
         }
         .error-banner {
           position: absolute;
@@ -183,7 +192,7 @@ export default function Pano({
           color: #fff;
           padding: 12px 18px;
           border-radius: 999px;
-          font-size: 13px;
+          font-size: 14px;
           z-index: 25;
           text-align: center;
         }
