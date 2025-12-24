@@ -17,7 +17,6 @@ export default function Pano({
   activePlace,
 }) {
   const [isNoteOpen, setIsNoteOpen] = useState(false);
-  const [motionError, setMotionError] = useState(null);
   const motionGrantedRef = useRef(false);
   const motionRequestedRef = useRef(false);
 
@@ -30,11 +29,9 @@ export default function Pano({
   const enableMotion = useCallback(async ({ forceRequest = false } = {}) => {
     if (typeof window === 'undefined' || !streetViewInstanceRef?.current) return;
     if (!window.isSecureContext) {
-      setMotionError('모션 센서는 HTTPS 환경에서만 사용할 수 있습니다.');
       return false;
     }
     if (typeof window.DeviceOrientationEvent === 'undefined') {
-      setMotionError('디바이스가 모션 센서를 지원하지 않습니다.');
       return false;
     }
 
@@ -53,7 +50,6 @@ export default function Pano({
         await requestPermission(window.DeviceMotionEvent.requestPermission);
       }
     } catch (err) {
-      setMotionError('모션 접근 권한을 허용해야 스트리트뷰를 돌려볼 수 있습니다.');
       return false;
     }
 
@@ -62,7 +58,6 @@ export default function Pano({
     pano.setMotionTrackingEnabled?.(true);
     pano.setMotionTrackingControl?.(false);
     motionGrantedRef.current = true;
-    setMotionError(null);
     return true;
   }, [streetViewInstanceRef]);
   const requestMotionWithGesture = useCallback(() => {
@@ -73,7 +68,6 @@ export default function Pano({
 
   const handleClose = () => {
     disableMotion();
-    setMotionError(null);
     setIsNoteOpen(false);
     onClose();
   };
@@ -81,7 +75,6 @@ export default function Pano({
   useEffect(() => {
     if (!isActive) {
       disableMotion();
-      setMotionError(null);
       setIsNoteOpen(false);
       return;
     }
@@ -142,7 +135,6 @@ export default function Pano({
               +
             </button>
             {error && <div className="error-banner">{error}</div>}
-            {motionError && !error && <div className="error-banner">{motionError}</div>}
           </>
         )}
       </div>
