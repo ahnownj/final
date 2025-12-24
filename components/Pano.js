@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Note from './note';
 
 const requestPermission = async (fn) => {
@@ -17,6 +17,9 @@ export default function Pano({
   activePlace,
 }) {
   const [isNoteOpen, setIsNoteOpen] = useState(false);
+  const [needsMotionPrompt, setNeedsMotionPrompt] = useState(false);
+  const [motionError, setMotionError] = useState(null);
+  const motionGrantedRef = useRef(false);
 
   const disableMotion = useCallback(() => {
     const pano = streetViewInstanceRef?.current;
@@ -24,30 +27,56 @@ export default function Pano({
     pano?.setMotionTrackingEnabled?.(false);
   }, [streetViewInstanceRef]);
 
-  const enableMotion = useCallback(async () => {
+  const enableMotion = useCallback(async ({ forceRequest = false } = {}) => {
     if (typeof window === 'undefined' || !streetViewInstanceRef?.current) return;
     if (!window.isSecureContext) {
-      return;
+      setMotionError('모션 센서는 HTTPS 환경에서만 사용할 수 있습니다.');
+      return false;
     }
     if (typeof window.DeviceOrientationEvent === 'undefined') {
-      return;
+      setMotionError('디바이스가 모션 센서를 지원하지 않습니다.');
+      return false;
+    }
+
+    const requiresUserGesture =
+      typeof window.DeviceOrientationEvent?.requestPermission === 'function' ||
+      typeof window.DeviceMotionEvent?.requestPermission === 'function';
+    if (requiresUserGesture && !forceRequest && !motionGrantedRef.current) {
+      setNeedsMotionPrompt(true);
+      return false;
     }
 
     try {
-      await requestPermission(window.DeviceOrientationEvent.requestPermission);
-      await requestPermission(window.DeviceMotionEvent?.requestPermission);
+      if (typeof window.DeviceOrientationEvent?.requestPermission === 'function') {
+        await requestPermission(window.DeviceOrientationEvent.requestPermission);
+      }
+      if (typeof window.DeviceMotionEvent?.requestPermission === 'function') {
+        await requestPermission(window.DeviceMotionEvent.requestPermission);
+      }
     } catch (err) {
-      return;
+      setMotionError('모션 접근 권한을 허용해야 스트리트뷰를 돌려볼 수 있습니다.');
+      setNeedsMotionPrompt(true);
+      return false;
     }
 
     const pano = streetViewInstanceRef.current;
     pano.setMotionTracking?.(true);
     pano.setMotionTrackingEnabled?.(true);
     pano.setMotionTrackingControl?.(false);
+    motionGrantedRef.current = true;
+    setNeedsMotionPrompt(false);
+    setMotionError(null);
+    return true;
   }, [streetViewInstanceRef]);
+
+  const handleRequestMotion = async () => {
+    await enableMotion({ forceRequest: true });
+  };
 
   const handleClose = () => {
     disableMotion();
+    setNeedsMotionPrompt(false);
+    setMotionError(null);
     setIsNoteOpen(false);
     onClose();
   };
@@ -55,6 +84,8 @@ export default function Pano({
   useEffect(() => {
     if (!isActive) {
       disableMotion();
+      setNeedsMotionPrompt(false);
+      setMotionError(null);
       setIsNoteOpen(false);
       return;
     }
@@ -102,7 +133,13 @@ export default function Pano({
             >
               +
             </button>
+            {needsMotionPrompt && (
+              <button className="floating-btn floating-btn--pill motion-button" onClick={handleRequestMotion}>
+                모션 허용
+              </button>
+            )}
             {error && <div className="error-banner">{error}</div>}
+            {motionError && !error && <div className="error-banner">{motionError}</div>}
           </>
         )}
       </div>
@@ -182,6 +219,22 @@ export default function Pano({
         }
         .note-button:hover {
           color: #ffd400;
+        }
+        .motion-button {
+          position: absolute;
+          bottom: 16px;
+          left: 12px;
+          background: rgba(0, 0, 0, 0.7);
+          color: #fff;
+          border: 1px solid #fff;
+          border-radius: 999px;
+          padding: 8px 14px;
+          font-size: 13px;
+          letter-spacing: 0.04em;
+        }
+        .motion-button:hover {
+          color: #ffd400;
+          border-color: #ffd400;
         }
         .error-banner {
           position: absolute;
