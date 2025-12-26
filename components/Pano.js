@@ -101,13 +101,14 @@ export default function Pano({
     if (pendingGestureListenerRef.current) return undefined;
     pendingGestureListenerRef.current = true;
     const handler = () => requestMotionWithGesture();
-    window.addEventListener('pointerdown', handler);
-    window.addEventListener('touchstart', handler);
-    window.addEventListener('click', handler);
+    const options = { capture: true };
+    window.addEventListener('pointerdown', handler, options);
+    window.addEventListener('touchstart', handler, options);
+    window.addEventListener('click', handler, options);
     return () => {
-      window.removeEventListener('pointerdown', handler);
-      window.removeEventListener('touchstart', handler);
-      window.removeEventListener('click', handler);
+      window.removeEventListener('pointerdown', handler, options);
+      window.removeEventListener('touchstart', handler, options);
+      window.removeEventListener('click', handler, options);
     };
   }, [requestMotionWithGesture]);
 

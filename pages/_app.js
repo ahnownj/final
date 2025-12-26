@@ -66,13 +66,14 @@ export default function App({ Component, pageProps }) {
         /* ignore */
       }
     };
-    window.addEventListener('pointerdown', handler, { passive: true });
-    window.addEventListener('touchstart', handler, { passive: true });
-    window.addEventListener('click', handler, { passive: true });
+    const options = { passive: true, capture: true };
+    window.addEventListener('pointerdown', handler, options);
+    window.addEventListener('touchstart', handler, options);
+    window.addEventListener('click', handler, options);
     return () => {
-      window.removeEventListener('pointerdown', handler);
-      window.removeEventListener('touchstart', handler);
-      window.removeEventListener('click', handler);
+      window.removeEventListener('pointerdown', handler, options);
+      window.removeEventListener('touchstart', handler, options);
+      window.removeEventListener('click', handler, options);
     };
   }, []);
 
