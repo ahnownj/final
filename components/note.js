@@ -83,6 +83,11 @@ export default function Note({ place, isOpen, onClose }) {
   const textareaRef = useRef(null);
   const saveTimerRef = useRef(null);
   const storageKey = getNoteStorageKey(place?.id);
+  const adjustNameHeight = () => {
+    if (!nameRef.current) return;
+    nameRef.current.style.height = 'auto';
+    nameRef.current.style.height = `${nameRef.current.scrollHeight}px`;
+  };
 
   useEffect(() => {
     let active = true;
@@ -118,6 +123,14 @@ export default function Note({ place, isOpen, onClose }) {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleResize = () => adjustNameHeight();
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [name, isOpen]);
 
   const persistNote = (bodyValue, nameValue) => {
     if (!storageKey || typeof window === 'undefined' || !place) return null;
@@ -159,10 +172,7 @@ export default function Note({ place, isOpen, onClose }) {
     const value = e.target.value;
     setName(value);
     persistNote(body, value);
-    if (nameRef.current) {
-      nameRef.current.style.height = 'auto';
-      nameRef.current.style.height = `${nameRef.current.scrollHeight}px`;
-    }
+    adjustNameHeight();
   };
 
   if (!isOpen || !place) return null;
@@ -183,19 +193,13 @@ export default function Note({ place, isOpen, onClose }) {
               onFocus={() => {
                 if (name === HEADER_NAME) {
                   setName('');
-                  if (nameRef.current) {
-                    nameRef.current.style.height = 'auto';
-                    nameRef.current.style.height = `${nameRef.current.scrollHeight}px`;
-                  }
+                  adjustNameHeight();
                 }
               }}
               onClick={() => {
                 if (name === HEADER_NAME) {
                   setName('');
-                  if (nameRef.current) {
-                    nameRef.current.style.height = 'auto';
-                    nameRef.current.style.height = `${nameRef.current.scrollHeight}px`;
-                  }
+                  adjustNameHeight();
                 }
               }}
               spellCheck={false}
@@ -262,12 +266,12 @@ export default function Note({ place, isOpen, onClose }) {
         .note-header,
         .note-textarea { font-family: 'Routed Gothic', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 30px; font-weight: 400; color: #0f0f0f; }
         .note-header { line-height: 1.2; display: flex; flex-direction: column; gap: 12px; max-width: 100%; }
-        .note-name-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; line-height: 1.2; }
-        .note-time-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2em; line-height: 1.2; white-space: normal; word-break: normal; max-width: 100%; }
-        .note-date-wrap { display: inline-flex; align-items: center; gap: 0.2em; white-space: nowrap; vertical-align: middle; }
-        .note-date { line-height: 1.2; }
-        .note-rest { line-height: 1.2; white-space: normal; word-break: break-word; }
-        .note-dot { width: 0.34em; height: 0.34em; border-radius: 50%; background: #ff2d55; display: inline-block; flex-shrink: 0; animation: note-dot-blink 2.2s linear infinite; vertical-align: middle; margin-right: 0.14em; position: relative; top: 1pt; }
+        .note-name-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; line-height: 1.2; max-width: 100%; min-width: 0; }
+        .note-time-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.01em; line-height: 1.2; white-space: normal; word-break: break-word; max-width: 100%; min-width: 0; }
+        .note-date-wrap { display: inline; white-space: normal; word-break: break-word; min-width: 0; }
+        .note-date { line-height: 1.2; word-break: break-word; overflow-wrap: anywhere; }
+        .note-rest { line-height: 1.2; white-space: normal; word-break: break-word; overflow-wrap: anywhere; }
+        .note-dot { width: 0.3em; height: 0.3em; border-radius: 50%; background: #ff2d55; display: inline-block; flex-shrink: 0; animation: note-dot-blink 2.0s linear infinite; vertical-align: middle; margin-right: 0.3em; position: relative; top: -2pt; }
         .note-name-input {
           border: none;
           outline: none;
@@ -277,12 +281,15 @@ export default function Note({ place, isOpen, onClose }) {
           padding: 0;
           margin: 0;
           width: 100%;
+          max-width: 100%;
+          min-width: 0;
           min-height: 1.1em;
           line-height: 1.2;
           resize: none;
           overflow: hidden;
           white-space: pre-wrap;
           word-break: break-word;
+          overflow-wrap: anywhere;
         }
         .note-name-input::selection,
         .note-header span::selection,
@@ -304,6 +311,8 @@ export default function Note({ place, isOpen, onClose }) {
           white-space: pre-wrap;
           overflow: auto;
           overflow-wrap: anywhere;
+          word-break: break-word;
+          max-width: 100%;
           padding: 0;
         }
         .note-textarea::-webkit-scrollbar { width: 6px; }
@@ -313,14 +322,6 @@ export default function Note({ place, isOpen, onClose }) {
           40% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 6px rgba(255, 45, 85, 0.0); }
           70% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 45, 85, 0.0); }
           100% { opacity: 0; transform: scale(0.9); box-shadow: 0 0 0 0 rgba(255, 45, 85, 0.0); }
-        }
-        /* Mobile narrow (e.g., 414px-class devices) */
-        @media (max-width: 430px) {
-          .note-surface {
-            padding: 6vh 5vw;
-          }
-          .note-header,
-          .note-textarea { font-size: 28px; line-height: 1.22; }
         }
       `}</style>
     </div>
