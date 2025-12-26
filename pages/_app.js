@@ -1,6 +1,6 @@
 import "@/styles/globals.css";
 import { createGlobalStyle, ThemeProvider } from 'styled-components';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import GlobeOverlay from '@/components/globe';
 import AboutOverlay from '@/components/AboutOverlay';
@@ -22,6 +22,7 @@ const theme = {
 
 export default function App({ Component, pageProps }) {
   const router = useRouter();
+  const motionRequestedRef = useRef(false);
 
   useEffect(() => {
     let scrollTimer;
@@ -40,6 +41,38 @@ export default function App({ Component, pageProps }) {
     return () => {
       window.removeEventListener('scroll', handleScroll);
       clearTimeout(scrollTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handler = async () => {
+      if (motionRequestedRef.current) return;
+      motionRequestedRef.current = true;
+      const isSecure = window.isSecureContext;
+      const hasOrientation = typeof window.DeviceOrientationEvent !== 'undefined';
+      const needsPrompt =
+        typeof window.DeviceOrientationEvent?.requestPermission === 'function' ||
+        typeof window.DeviceMotionEvent?.requestPermission === 'function';
+      if (!isSecure || !hasOrientation || !needsPrompt) return;
+      try {
+        if (typeof window.DeviceOrientationEvent?.requestPermission === 'function') {
+          await window.DeviceOrientationEvent.requestPermission();
+        }
+        if (typeof window.DeviceMotionEvent?.requestPermission === 'function') {
+          await window.DeviceMotionEvent.requestPermission();
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    window.addEventListener('pointerdown', handler, { passive: true });
+    window.addEventListener('touchstart', handler, { passive: true });
+    window.addEventListener('click', handler, { passive: true });
+    return () => {
+      window.removeEventListener('pointerdown', handler);
+      window.removeEventListener('touchstart', handler);
+      window.removeEventListener('click', handler);
     };
   }, []);
 
