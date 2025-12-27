@@ -30,10 +30,6 @@ export default function Pano({
 
   const enableMotion = useCallback(async ({ forceRequest = false } = {}) => {
     if (typeof window === 'undefined') return false;
-    if (!streetViewInstanceRef?.current) {
-      pendingRequestRef.current = true;
-      return false;
-    }
     if (!window.isSecureContext) {
       return false;
     }
@@ -59,11 +55,17 @@ export default function Pano({
       return false;
     }
 
+    motionGrantedRef.current = true;
+
+    if (!streetViewInstanceRef?.current) {
+      pendingRequestRef.current = true;
+      return true;
+    }
+
     const pano = streetViewInstanceRef.current;
     pano.setMotionTracking?.(true);
     pano.setMotionTrackingEnabled?.(true);
     pano.setMotionTrackingControl?.(false);
-    motionGrantedRef.current = true;
     return true;
   }, [streetViewInstanceRef]);
   const requestMotionWithGesture = useCallback(() => {
