@@ -271,7 +271,7 @@ export default function Note({ place, isOpen, onClose }) {
         .note-date-wrap { display: inline; white-space: normal; word-break: break-word; min-width: 0; }
         .note-date { line-height: 1.2; word-break: break-word; overflow-wrap: anywhere; }
         .note-rest { line-height: 1.2; white-space: normal; word-break: break-word; overflow-wrap: anywhere; }
-        .note-dot { width: 0.3em; height: 0.3em; border-radius: 50%; background: #ff2d55; display: inline-block; flex-shrink: 0; animation: note-dot-blink 2.0s linear infinite; vertical-align: middle; margin-right: 0.3em; position: relative; top: -2pt; }
+        .note-dot { width: 0.3em; height: 0.3em; border-radius: 50%; background: #ff2d55; display: inline-block; flex-shrink: 0; animation: note-dot-blink 2.0s linear infinite; vertical-align: middle; margin-right: 0.35em; position: relative; top: -2pt; }
         .note-name-input {
           border: none;
           outline: none;
