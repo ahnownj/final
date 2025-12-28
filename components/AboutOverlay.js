@@ -44,7 +44,7 @@ export default function AboutOverlay() {
             </p>
 
             <p>
-              This website has been created by <a href="mailto:ahnownj@gmail.com" className="author-link">Eunjae Ahn</a> from 2025 Convergence Design III led by Jeanyoon Choi at <a href="https://www.karts.ac.kr/" target="_blank" rel="noreferrer" className="university-link">Korea National University of Arts</a>.
+              This website was created by <a href="mailto:ahnownj@gmail.com" className="author-link">Eunjae Ahn</a> as a part of 2025 Convergence Design 4 taught by Jeanyoon Choi at <a href="https://www.karts.ac.kr/" target="_blank" rel="noreferrer" className="university-link">Korea National University of Arts</a>.
             </p>
           </div>
         </div>
