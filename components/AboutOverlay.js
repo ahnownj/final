@@ -36,11 +36,11 @@ export default function AboutOverlay() {
           <div className="about-text">
             <p>
               <span className="site-name" onClick={handleSiteNameClick}>WorldWithoutWords</span> is a space for encountering images of distant landscapes through the eyes of Google's Street View. It emerged from the realization that, while we each live within separate coordinates, the sun's movement—and our act of watching it—remains shared.
-              In those panoramic fragments, the subject is often missing. No one appears in the frame—only a shadow, a glitch, or a vanishing point hinting at a presence. These images evoke a peculiar sense of disappearing, as though something is watching back from behind the screen.
+              In those panoramic fragments, the subject is often missing. No one appears in the frame—only a shadow, a glitch, or a vanishing point hinting at a presence. These images evoke a peculiar sense of disappearing.
             </p>
 
             <p>
-              The project is a temporary meditation on memory, absence, and the illusion of proximity. The Earth, once known to us through paper maps and childhood globes, appears again in digital form—distorted, flattened, yet strangely emotional. By wandering through these virtual thresholds, we not only glimpse other landscapes but perhaps also reconnect with someone, somewhere, who once stood there.
+              The project explores memory, absence, and the illusion of proximity. The Earth, once known to us through paper maps and childhood globes, appears again in digital form—distorted, flattened, yet strangely emotional. By wandering through these virtual thresholds, we encounter landscapes marked by the absence of those who once stood there.
             </p>
 
             <p>
